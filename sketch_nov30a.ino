@@ -1,6 +1,10 @@
 #include <SPI.h>
 #include <DirectIO.h>
 
+#define LFO_SAW 0
+#define LFO_SINE 1
+#define LFO_TRI 2
+
 static uint16_t waveForm[3][120] =   {
   // Sawtooth wave
   {
@@ -49,7 +53,6 @@ static uint16_t waveForm[3][120] =   {
   }
 };
 int lfoWavePointer = 0;
-#define oneHzSample 1000000/120
 
 int voice[] = {
               0,   // Key CV
@@ -126,11 +129,11 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   voice[CV] = 0;  //waveForm[0][lfoWavePointer]
   voice[MOD_AMT] = constrain(0, 0, 2048);
   voice[WAVE_SELECT] = constrain((analogRead(A0) & 0xfffc) << 2, 0, 2048);
-  voice[PWM] = constrain(waveForm[1][lfoWavePointer], 0, 2048);
+  voice[PWM] = constrain(waveForm[LFO_SINE][lfoWavePointer], 0, 2048);
   voice[MIXER] = 2048;
   voice[RESONANCE] = 1024;
   voice[CUTOFF] = constrain((analogRead(A1) & 0xfffc) << 2, 0, 2048);
-  voice[VCA] = constrain(waveForm[2][lfoWavePointer], 0, 2048);
+  voice[VCA] = constrain(waveForm[LFO_TRI][lfoWavePointer], 0, 2048);
 
   lfoWavePointer++;
   if(lfoWavePointer == 120)
