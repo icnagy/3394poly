@@ -54,15 +54,15 @@ static uint16_t waveForm[3][120] =   {
 };
 int lfoWavePointer = 0;
 
-int voice[] = {
-              0,   // Key CV
-              0,   // Mod Amount
-              0,   // Wave Select
-              0,   // PWM
-              0,   // Mixer Balance
-              0,   // Resonance
-              0,   // Cutoff
-              0    // VCA
+uint16_t voice[8] = {
+              0, // Key CV
+              0, // Mod Amount
+              0, // Wave Select
+              0, // PWM
+              0, // Mixer Balance
+              0, // Resonance
+              0, // Cutoff
+              0  // VCA
             };
 
 #define CV          0
@@ -77,22 +77,26 @@ int voice[] = {
 static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
-Input<0> waveformSelectInput;
-Input<1> cutoffInput;
-
 OutputPort<PORT_B> channelSelect;
 Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;
 Output<k_pinDisableMultiplex> m_outputDisableMultiplex;
 
-static uint8_t k_writeChannelA = 0b01110000;
-static uint8_t k_writeChannelB = 0b11110000;
+#define DAC_A_GAIN 1 // 0: x2, 1: x1
+#define DAC_B_GAIN 1 // 0: x2, 1: x1
+
+#define DAC_A_BUFFER 1 // 0: Unbuffered, 1: Buffered
+#define DAC_B_BUFFER 1 // 0: Unbuffered, 1: Buffered
+
+#define DAC_A_SHDN 1 // 0: Channel off, 1: Channel on
+#define DAC_B_SHDN 1 // 0: Channel off, 1: Channel on
+
+#define k_writeChannelA ((0x0 << 7) | (DAC_A_BUFFER << 6) | (DAC_A_GAIN << 5) | (DAC_A_SHDN << 4))
+#define k_writeChannelB ((0x1 << 7) | (DAC_B_BUFFER << 6) | (DAC_B_GAIN << 5) | (DAC_B_SHDN << 4))
 
 uint8_t bpmTimeTablePrescalerArray[] = {
   (0 << CS12) | (1 << CS11) | (1 << CS10), // 64
   (1 << CS22) | (0 << CS21) | (0 << CS20)  // 256
 };
-
-uint8_t skipVoiceUpdate = 0;
 
 uint16_t bufferB[10];
 uint8_t data_available_B = 0;
@@ -126,14 +130,35 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 
   writeDACB(waveForm[1][lfoWavePointer]);
 
-  voice[CV] = 0;  //waveForm[0][lfoWavePointer]
-  voice[MOD_AMT] = constrain(0, 0, 2048);
-  voice[WAVE_SELECT] = constrain((analogRead(A0) & 0xfffc) << 2, 0, 2048);
-  voice[PWM] = constrain(waveForm[LFO_SINE][lfoWavePointer], 0, 2048);
-  voice[MIXER] = 2048;
-  voice[RESONANCE] = 1024;
-  voice[CUTOFF] = constrain((analogRead(A1) & 0xfffc) << 2, 0, 2048);
-  voice[VCA] = constrain(waveForm[LFO_TRI][lfoWavePointer], 0, 2048);
+  //-4..+4V
+  voice[CV] = constrain((analogRead(A0) << 2) & 0xffc, 0, 4095);
+
+  // //0..+4V
+  // voice[MOD_AMT] = constrain(2048, 2048, 4095);
+  voice[MOD_AMT] = 0;
+
+  // //-2..+4V
+  // voice[WAVE_SELECT] = constrain(0, 0, 4095); //analogRead(A0) & 0xfffc;
+  voice[WAVE_SELECT] = 0;
+
+  // //0..+2V
+  // voice[PWM] = constrain(waveForm[LFO_SINE][lfoWavePointer], 0, 2047);
+  voice[PWM] = 0;
+
+  // //-2..+2V
+  // voice[MIXER] = constrain(0, 0, 4095);
+  voice[MIXER] = 0;
+
+  // //0..+2V
+  // voice[RESONANCE] = constrain(2048, 2048, 4095);
+  voice[RESONANCE] = 0;
+
+  // //-3..+4V
+  // voice[CUTOFF] = constrain(waveForm[LFO_TRI][lfoWavePointer],0, 4095);
+  voice[CUTOFF] = constrain(2047,0, 4095);
+
+  // //0..+4V
+  voice[VCA] = constrain(waveForm[LFO_TRI][lfoWavePointer],0, 4095);
 
   lfoWavePointer++;
   if(lfoWavePointer == 120)
@@ -174,30 +199,32 @@ void writeCV(uint8_t channel, uint16_t param)
   m_outputDisableMultiplex = LOW;  // Enable Multiplex
 }
 
-int refreshVoicePointer = 0;
+uint8_t dacUpdateCounter = 0;
+uint8_t refreshVoicePointer = 0;
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
 
   int read_pointer = 0;
   // DAC A
-  if (skipVoiceUpdate > 6) {
-    if(refreshVoicePointer > 7) {
-      refreshVoicePointer = 0;
-      skipVoiceUpdate = 0;
-    }
+  if (dacUpdateCounter > 6) {
     uint16_t command = (k_writeChannelA << 8) | (voice[refreshVoicePointer] & 0x0FFF);
     m_outputChipSelectDAC = LOW;              // Disable DAC latch
+    m_outputDisableMultiplex = HIGH;          // Disable Multiplex
+    channelSelect.write(refreshVoicePointer); // Select Channel
 
     SPI.transfer(command >> 8);
     SPI.transfer(command & 0xFF);
 
-    m_outputDisableMultiplex = HIGH;          // Disable Multiplex
-    channelSelect.write(refreshVoicePointer); // Select Channel
     m_outputChipSelectDAC = HIGH;             // DAC latch Vout
     m_outputDisableMultiplex = LOW;           // Enable Multiplex
     refreshVoicePointer++;
+
+    if(refreshVoicePointer > 7) {
+      refreshVoicePointer = 0;
+      dacUpdateCounter = 0;
+    }
   }
-  skipVoiceUpdate++;
+  dacUpdateCounter++;
 
   read_pointer = 0;
   // DAC B
