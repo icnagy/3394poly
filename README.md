@@ -1,5 +1,5 @@
 ### Compile
 
 ```
-arduino-cli compile --fqbn arduino:avr:uno && arduino-cli upload -p /dev/cu.usbserial-14210 --fqbn arduino:avr:uno sketch_nov30a.ino
+arduino-cli compile -v --fqbn arduino:avr:uno && arduino-cli upload -v -p /dev/$(ls /dev | grep cu.usb) --fqbn arduino:avr:uno
 ```
