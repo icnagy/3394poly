@@ -54,16 +54,14 @@ static uint16_t waveForm[3][120] =   {
 };
 int lfoWavePointer = 0;
 
-uint16_t voice[8] = {
-              0, // Key CV
-              0, // Mod Amount
-              0, // Wave Select
-              0, // PWM
-              0, // Mixer Balance
-              0, // Resonance
-              0, // Cutoff
-              0  // VCA
-            };
+uint16_t voice[6][8] = {
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                        { 0, 0, 0, 0, 0, 0, 0, 0 },
+                      };
 
 #define CV          0
 #define MOD_AMT     1
@@ -77,9 +75,9 @@ uint16_t voice[8] = {
 static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
-OutputPort<PORT_B> channelSelect;
-Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;
-Output<k_pinDisableMultiplex> m_outputDisableMultiplex;
+OutputPort<PORT_B> voiceParamSelect;                       // Arduino pin 8, 9, 10 to 4051 11, 10, 9
+Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP4922 pin 3
+Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051 pin 6
 
 #define DAC_A_GAIN 1 // 0: x2, 1: x1
 #define DAC_B_GAIN 1 // 0: x2, 1: x1
@@ -90,146 +88,101 @@ Output<k_pinDisableMultiplex> m_outputDisableMultiplex;
 #define DAC_A_SHDN 1 // 0: Channel off, 1: Channel on
 #define DAC_B_SHDN 1 // 0: Channel off, 1: Channel on
 
-#define k_writeChannelA ((0x0 << 7) | (DAC_A_BUFFER << 6) | (DAC_A_GAIN << 5) | (DAC_A_SHDN << 4))
-#define k_writeChannelB ((0x1 << 7) | (DAC_B_BUFFER << 6) | (DAC_B_GAIN << 5) | (DAC_B_SHDN << 4))
+#define k_writeChannelA (((0x0 << 7) | (DAC_A_BUFFER << 6) | (DAC_A_GAIN << 5) | (DAC_A_SHDN << 4)) << 8)
+#define k_writeChannelB (((0x1 << 7) | (DAC_B_BUFFER << 6) | (DAC_B_GAIN << 5) | (DAC_B_SHDN << 4)) << 8)
 
-uint8_t bpmTimeTablePrescalerArray[] = {
+uint8_t timer1Prescaler[] = {
   (0 << CS12) | (1 << CS11) | (1 << CS10), // 64
-  (1 << CS22) | (0 << CS21) | (0 << CS20)  // 256
+  (1 << CS12) | (0 << CS11) | (0 << CS10), // 256
+  (1 << CS12) | (0 << CS11) | (1 << CS10)  // 1024
+};
+
+uint8_t timer2Prescaler[] = {
+  (0 << CS22) | (1 << CS21) | (1 << CS20), // 32
+  (1 << CS22) | (0 << CS21) | (0 << CS20), // 64
+  (1 << CS22) | (0 << CS21) | (1 << CS20), // 128
+  (1 << CS22) | (1 << CS21) | (0 << CS20), // 256
+  (1 << CS22) | (1 << CS21) | (1 << CS20)  // 1024
 };
 
 uint16_t bufferB[10];
 uint8_t data_available_B = 0;
 
+#define TIMER1_PRESCALER timer1Prescaler[1]
+#define TIMER1_COUNTER ((12000000 / (256 * 1000)) - 1)
+
+#define TIMER2_PRESCALER timer2Prescaler[4]
+#define TIMER2_COUNTER ((12000000 / (1024 * 10)) - 1)
+
 void initializeInterrupts() {
-  // TIMER 1 for interrupt frequency 10Hz:
+  cli();                                    // stop interrupts
+
+  // TIMER 1 for interrupt frequency 1000 Hz:
   TIMSK1 = 0;                               // disable timer compare interrupt
   TCCR1A = 0;                               // set entire TCCR1A register to 0
   TCCR1B = 0;                               // same for TCCR1B
   TCNT1  = 0;                               // initialize counter value to 0
                                             // set compare match register for bpm/60 Hz increments
-                                            // = 12000000 / (256 * freq) - 1 (must be < 65536)
-  OCR1A = 389;                              // 10Hz?
+                                            // = 12000000 / (256 * 1000) - 1 (must be < 65536)
+  OCR1A = 45;
   TCCR1B |= (1 << WGM12);                   // turn on CTC mode
-  TCCR1B |= bpmTimeTablePrescalerArray[1];  // Set CS12, CS11 and CS10 bits for prescaler
+  TCCR1B |= TIMER1_PRESCALER;               // Set CS12, CS11 and CS10 bits for prescaler
   TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
 
-  // TIMER 2 for interrupt frequency 100Hz:
-  TCCR2B = 0;                               // set entire TCCR2B register to 0
-  TCCR2A |= (1 << WGM21);                   // turn on CTC mode
-                                            // set compare match register for 120 Hz increments (must be < 65536)
-                                            // = 12000000 / (256 * 100) - 1
-  OCR2A = 329;                              // 100 Hz
-  TCNT2  = 0;                               // initialize counter value to 0
+  // TIMER 2 for interrupt frequency 120 Hz:
+  TIMSK2 = 0;                               // disable timer compare interrupt
   TCCR2A = 0;                               // set entire TCCR2A register to 0
-  TCCR2B |= bpmTimeTablePrescalerArray[1];  // Set CS22, CS21 and CS20 bits for 256 prescaler
+  TCCR2B = 0;                               // set entire TCCR2B register to 0
+  TCNT2  = 0;                               // initialize counter value to 0
+                                            // set compare match register for 120 Hz increments (must be < 65536)
+                                            // = 12000000 / (256 * 120) - 1 <= 256
+  OCR2A = TIMER2_COUNTER;
+  TCCR2A |= (1 << WGM21);                   // turn on CTC mode
+  TCCR2B |= TIMER2_PRESCALER;               // Set CS22, CS21 and CS20 bits for 256 prescaler
   TIMSK2 |= (1 << OCIE2A);                  // enable timer compare interrupt
+
+  sei();                                    // allow interrupts
 }
+
+uint8_t irq1Count = 0;
+uint8_t bufferBReadPointer = 0;
+
+uint8_t voiceSelect = 0;
+uint8_t voiceParamNumber = 0;
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
-
-  writeDACB(waveForm[1][lfoWavePointer]);
-
-  //-4..+4V
-  voice[CV] = constrain((analogRead(A0) << 2) & 0xffc, 0, 4095);
-
-  // //0..+4V
-  // voice[MOD_AMT] = constrain(2048, 2048, 4095);
-  voice[MOD_AMT] = 0;
-
-  // //-2..+4V
-  // voice[WAVE_SELECT] = constrain(0, 0, 4095); //analogRead(A0) & 0xfffc;
-  voice[WAVE_SELECT] = 0;
-
-  // //0..+2V
-  // voice[PWM] = constrain(waveForm[LFO_SINE][lfoWavePointer], 0, 2047);
-  voice[PWM] = 0;
-
-  // //-2..+2V
-  // voice[MIXER] = constrain(0, 0, 4095);
-  voice[MIXER] = 0;
-
-  // //0..+2V
-  // voice[RESONANCE] = constrain(2048, 2048, 4095);
-  voice[RESONANCE] = 0;
-
-  // //-3..+4V
-  // voice[CUTOFF] = constrain(waveForm[LFO_TRI][lfoWavePointer],0, 4095);
-  voice[CUTOFF] = constrain(2047,0, 4095);
-
-  // //0..+4V
-  voice[VCA] = constrain(waveForm[LFO_TRI][lfoWavePointer],0, 4095);
-
-  lfoWavePointer++;
-  if(lfoWavePointer == 120)
-    lfoWavePointer = 0;
-}
-
-void setup() {
-
-  m_outputChipSelectDAC = HIGH;   // Disable DAC (~CS)
-  m_outputDisableMultiplex = LOW; // Enable Multiplex
-
-  SPI.begin();
-  SPI.setBitOrder(MSBFIRST);
-  SPI.setDataMode(SPI_MODE0);
-  SPI.setClockDivider(SPI_CLOCK_DIV2);
-
-  Serial.begin(115200);
-  cli(); // stop interrupts
-  initializeInterrupts();
-  sei(); // allow interrupts
-}
-
-void loop() {
-  while(true) {
-  }
-}
-
-void writeCV(uint8_t channel, uint16_t param)
-{
-  uint16_t value_ = voice[param];
-  m_outputChipSelectDAC = LOW;
-
-  SPI.transfer(channel | (uint8_t)((value_ >> 8) & 0x0F));
-  SPI.transfer((uint8_t)(value_ & 0xFF));
-  m_outputDisableMultiplex = HIGH; // Disable Multiplex
-  channelSelect.write(param);      // Select Channel
-  m_outputChipSelectDAC = HIGH;    // DAC latch Vout
-  m_outputDisableMultiplex = LOW;  // Enable Multiplex
-}
-
-uint8_t dacUpdateCounter = 0;
-uint8_t refreshVoicePointer = 0;
-
-ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
-
-  int read_pointer = 0;
   // DAC A
-  if (dacUpdateCounter > 6) {
-    uint16_t command = (k_writeChannelA << 8) | (voice[refreshVoicePointer] & 0x0FFF);
+
+  voiceSelect = irq1Count >> 3;         // 0..5 => 0b000 ... 0b101
+
+  if(voiceSelect == 0) {
+    uint16_t command = k_writeChannelA | (voice[0][voiceParamNumber] & 0x0FFF);
+
     m_outputChipSelectDAC = LOW;              // Disable DAC latch
     m_outputDisableMultiplex = HIGH;          // Disable Multiplex
-    channelSelect.write(refreshVoicePointer); // Select Channel
-
+    voiceParamSelect.write(voiceParamNumber); // Select Channel
+    // voiceParamSelect.write(irq1Count);        // Voice and Param Select
+                                              // irq1Count is: xxxyyy (max 47 0b101111)
+                                              // xxx is voice number
+                                              // yyy is param number
     SPI.transfer(command >> 8);
     SPI.transfer(command & 0xFF);
 
     m_outputChipSelectDAC = HIGH;             // DAC latch Vout
     m_outputDisableMultiplex = LOW;           // Enable Multiplex
-    refreshVoicePointer++;
 
-    if(refreshVoicePointer > 7) {
-      refreshVoicePointer = 0;
-      dacUpdateCounter = 0;
-    }
   }
-  dacUpdateCounter++;
+  voiceParamNumber++;
+  voiceParamNumber = voiceParamNumber & 0x07;
 
-  read_pointer = 0;
+  irq1Count++;
+  if(irq1Count > 48)
+    irq1Count = 0;
+
+  bufferBReadPointer = 0;
   // DAC B
   while(data_available_B > 0) {
-    uint16_t command = bufferB[read_pointer++];
+    uint16_t command = bufferB[bufferBReadPointer++];
 
     m_outputChipSelectDAC = LOW;              // Disable DAC latch
 
@@ -241,9 +194,116 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   }
 }
 
+ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
+  writeDACB(waveForm[LFO_SAW][lfoWavePointer]);
+
+  lfoWavePointer++;
+  if(lfoWavePointer == 120)
+    lfoWavePointer = 0;
+}
+
 void writeDACB(uint16_t data){
-  bufferB[data_available_B++] = (k_writeChannelB << 8) | (data & 0x0FFF);
+  bufferB[data_available_B++] = k_writeChannelB | (data & 0x0FFF);
   if(data_available_B > 9) {
     data_available_B = 9;
   }
+}
+
+void setup() {
+
+  m_outputChipSelectDAC = LOW;    // Disable DAC (~CS)
+  m_outputDisableMultiplex = LOW; // Enable Multiplex
+
+  SPI.begin();
+  SPI.setBitOrder(MSBFIRST);
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setClockDivider(SPI_CLOCK_DIV2);
+
+  Serial.begin(115200);
+  initializeInterrupts();
+}
+
+void updateVoice(uint16_t *voice) {
+  //-4..+4V
+  // voice[0][CV] = constrain((analogRead(A0) << 2) & 0xffc, 0, 4095);
+  voice[CV] = 4095;
+
+  //0..+4V
+  // voice[MOD_AMT] = 2048;
+
+  //-2..+4V
+  // 0        => -2V
+  // 1 (1024) => -1V Square
+  // 2 (2048) =>  0V Triangle
+  // 3 (4095) =>  1V Tri + Saw
+  // 4 (????) =>  2V Saw
+  // voice[WAVE_SELECT] = constrain(((analogRead(A0) & 0x3c0) << 2), 0, 4095);
+  voice[WAVE_SELECT] = 4095;
+
+  //0..+2V
+  // voice[PWM] = 3072;
+  // constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
+  // voice[PWM] = constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
+
+  //-2..+2V
+  // voice[MIXER] = 0;
+
+  //0..+2V
+  // voice[RESONANCE] = 2048;
+
+  //-3..+4V
+  voice[CUTOFF] = constrain(4095 - waveForm[LFO_SINE][lfoWavePointer], 0, 4095);
+
+  //0..+4V
+  // voice[VCA] = constrain(2048 + (waveForm[LFO_TRI][lfoWavePointer] >> 1), 2048, 4095);
+  voice[VCA] = 4095;
+}
+
+void loop() {
+  updateVoice(voice[0]);
+  delay(1);
+  // //-4..+4V
+  // // voice[0][CV] = constrain((analogRead(A0) << 2) & 0xffc, 0, 4095);
+  // voice[0][CV] = 0;
+
+  // //0..+4V
+  // voice[0][MOD_AMT] = 2048;
+
+  // //-2..+4V
+  // // 0        => -2V
+  // // 1 (1024) => -1V Square
+  // // 2 (2048) =>  0V Triangle
+  // // 3 (3072) =>  1V Tri + Saw
+  // // 4 (4096) =>  2V Saw
+  // voice[0][WAVE_SELECT] = constrain(((analogRead(A0) & 0x3c0) << 2), 0, 4095);
+
+  // //0..+2V
+  // voice[0][PWM] = 3072;
+  // voice[0][PWM] = constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
+
+  //-2..+2V
+  // voice[0][MIXER] = 0;
+
+  //0..+2V
+  // voice[0][RESONANCE] = 2048;
+
+  //-3..+4V
+  // voice[0][CUTOFF] = constrain(4095 - ((analogRead(A1) & 0xffc) << 2), 0, 4095);
+
+  //0..+4V
+  // voice[0][VCA] = constrain(2048 + (waveForm[LFO_TRI][lfoWavePointer] >> 1), 2048, 4095);
+  // voice[0][VCA] = 4095;
+}
+
+void writeCV(uint8_t channel, uint16_t param)
+{
+  uint16_t value_ = voice[param];
+  m_outputChipSelectDAC = LOW;
+
+  SPI.transfer(channel | (uint8_t)((value_ >> 8) & 0x0F));
+  SPI.transfer((uint8_t)(value_ & 0xFF));
+  m_outputDisableMultiplex = HIGH; // Disable Multiplex
+  voiceParamSelect.write(param);      // Select Channel
+  m_outputChipSelectDAC = HIGH;    // DAC latch Vout
+  m_outputDisableMultiplex = LOW;  // Enable Multiplex
 }
