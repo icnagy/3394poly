@@ -122,9 +122,9 @@ void initializeInterrupts() {
   TCCR1A = 0;                               // set entire TCCR1A register to 0
   TCCR1B = 0;                               // same for TCCR1B
   TCNT1  = 0;                               // initialize counter value to 0
-                                            // set compare match register for bpm/60 Hz increments
-                                            // = 12000000 / (256 * 1000) - 1 (must be < 65536)
-  OCR1A = 45;
+                                            // set compare match register for 500 Hz increments
+                                            // = 12000000 / (256 * 500) - 1 (must be < 65536)
+  OCR1A = 92;
   TCCR1B |= (1 << WGM12);                   // turn on CTC mode
   TCCR1B |= TIMER1_PRESCALER;               // Set CS12, CS11 and CS10 bits for prescaler
   TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
@@ -153,13 +153,15 @@ uint8_t voiceParamNumber = 0;
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   // DAC A
 
-  voiceSelect = irq1Count >> 3;         // 0..5 => 0b000 ... 0b101
-
-  if(voiceSelect == 0) {
-    uint16_t command = k_writeChannelA | (voice[0][voiceParamNumber] & 0x0FFF);
+  voiceSelect = irq1Count >> 3;         // 0..5 => 0b000xxx ... 0b101xxx
+  voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
 
     m_outputChipSelectDAC = LOW;              // Disable DAC latch
     m_outputDisableMultiplex = HIGH;          // Disable Multiplex
+
+  if(voiceSelect == 0 ) {
+    uint16_t command = k_writeChannelA | (voice[0][voiceParamNumber] & 0x0FFF);
+
     voiceParamSelect.write(voiceParamNumber); // Select Channel
     // voiceParamSelect.write(irq1Count);        // Voice and Param Select
                                               // irq1Count is: xxxyyy (max 47 0b101111)
@@ -172,8 +174,6 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
     m_outputDisableMultiplex = LOW;           // Enable Multiplex
 
   }
-  voiceParamNumber++;
-  voiceParamNumber = voiceParamNumber & 0x07;
 
   irq1Count++;
   if(irq1Count > 48)
@@ -212,7 +212,7 @@ void writeDACB(uint16_t data){
 void setup() {
 
   m_outputChipSelectDAC = LOW;    // Disable DAC (~CS)
-  m_outputDisableMultiplex = LOW; // Enable Multiplex
+  m_outputDisableMultiplex = HIGH; // Disable Multiplex
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
@@ -220,6 +220,7 @@ void setup() {
   SPI.setClockDivider(SPI_CLOCK_DIV2);
 
   Serial.begin(115200);
+  Serial.println("Hello world");
   initializeInterrupts();
 }
 
