@@ -1,6 +1,102 @@
 #include <SPI.h>
 #include <DirectIO.h>
 
+#define VREF 5
+#define DAC_STEPS 4096
+#define VOLT_PER_OCTAVE_NOTE 1/12
+#define DAC_STEP_PER_NOTE (VOLT_PER_OCTAVE_NOTE) / (VREF / DAC_STEPS)
+
+//
+//GAIN: 0    OFFSET: 0        0.0
+//GAIN: 0    OFFSET: 500      0.57
+//GAIN: 0    OFFSET: 1000     1.15
+//GAIN: 0    OFFSET: 1500     1.72
+//GAIN: 0    OFFSET: 2000     2.29
+//GAIN: 0    OFFSET: 2500     2.86
+//GAIN: 0    OFFSET: 3000     3.43
+//GAIN: 0    OFFSET: 3500     4.01
+//GAIN: 0    OFFSET: 4000     4.58
+//
+//GAIN: 500  OFFSET: 0       -0.54
+//GAIN: 500  OFFSET: 500      0.0
+//GAIN: 500  OFFSET: 1000     0.58
+//GAIN: 500  OFFSET: 1500     1.15
+//GAIN: 500  OFFSET: 2000     1.72
+//GAIN: 500  OFFSET: 2500     2.29
+//GAIN: 500  OFFSET: 3000     2.87
+//GAIN: 500  OFFSET: 3500     3.44
+//GAIN: 500  OFFSET: 4000     4.02
+//
+//GAIN: 1000 OFFSET: 0       -1.12
+//GAIN: 1000 OFFSET: 500     -0.54
+//GAIN: 1000 OFFSET: 1000     0.0
+//GAIN: 1000 OFFSET: 1500     0.58
+//GAIN: 1000 OFFSET: 2000     1.15
+//GAIN: 1000 OFFSET: 2500     1.72
+//GAIN: 1000 OFFSET: 3000     2.29
+//GAIN: 1000 OFFSET: 3500     2.87
+//GAIN: 1000 OFFSET: 4000     3.44
+//
+//GAIN: 1500 OFFSET: 0       -1.68
+//GAIN: 1500 OFFSET: 500     -1.11
+//GAIN: 1500 OFFSET: 1000    -0.54
+//GAIN: 1500 OFFSET: 1500     0.0
+//GAIN: 1500 OFFSET: 2000     0.58
+//GAIN: 1500 OFFSET: 2500     1.15
+//GAIN: 1500 OFFSET: 3000     1.72
+//GAIN: 1500 OFFSET: 3500     2.30
+//GAIN: 1500 OFFSET: 4000     2.88
+//
+//GAIN: 2000 OFFSET: 0       -2.25
+//GAIN: 2000 OFFSET: 500     -1.69
+//GAIN: 2000 OFFSET: 1000    -1.11
+//GAIN: 2000 OFFSET: 1500    -0.54
+//GAIN: 2000 OFFSET: 2000     0.0
+//GAIN: 2000 OFFSET: 2500     0.58
+//GAIN: 2000 OFFSET: 3000     1.15
+//GAIN: 2000 OFFSET: 3500     1.73
+//GAIN: 2000 OFFSET: 4000     2.30
+//
+//GAIN: 2500 OFFSET: 0       -2.83
+//GAIN: 2500 OFFSET: 500     -2.26
+//GAIN: 2500 OFFSET: 1000    -1.68
+//GAIN: 2500 OFFSET: 1500    -1.11
+//GAIN: 2500 OFFSET: 2000    -0.54
+//GAIN: 2500 OFFSET: 2500     0.0
+//GAIN: 2500 OFFSET: 3000     0.57
+//GAIN: 2500 OFFSET: 3500     1.15
+//GAIN: 2500 OFFSET: 4000     1.72
+//
+//GAIN: 3000 OFFSET: 0       -3.39
+//GAIN: 3000 OFFSET: 500     -2.82
+//GAIN: 3000 OFFSET: 1000    -2.25
+//GAIN: 3000 OFFSET: 1500    -1.68
+//GAIN: 3000 OFFSET: 2000    -1.11
+//GAIN: 3000 OFFSET: 2500    -0.54
+//GAIN: 3000 OFFSET: 3000     0.0
+//GAIN: 3000 OFFSET: 3500     0.58
+//GAIN: 3000 OFFSET: 4000     1.15
+//
+//GAIN: 3500 OFFSET: 0       -3.96
+//GAIN: 3500 OFFSET: 500     -3.93
+//GAIN: 3500 OFFSET: 1000    -2.82
+//GAIN: 3500 OFFSET: 1500    -2.25
+//GAIN: 3500 OFFSET: 2000    -1.68
+//GAIN: 3500 OFFSET: 2500    -1.11
+//GAIN: 3500 OFFSET: 3000    -0.54
+//GAIN: 3500 OFFSET: 3500     0.0
+//GAIN: 3500 OFFSET: 4000     0.58
+//
+//GAIN: 4000 OFFSET: 0       -4.52
+//GAIN: 4000 OFFSET: 500     -3.96
+//GAIN: 4000 OFFSET: 1000    -3.38
+//GAIN: 4000 OFFSET: 1500    -2.82
+//GAIN: 4000 OFFSET: 2000    -2.25
+//GAIN: 4000 OFFSET: 2500    -1.68
+//GAIN: 4000 OFFSET: 3000    -1.11
+//GAIN: 4000 OFFSET: 3500    -0.54
+//GAIN: 4000 OFFSET: 4000     0.0
+
 #define LFO_SAW 0
 #define LFO_SINE 1
 #define LFO_TRI 2
@@ -64,18 +160,99 @@ uint16_t voice[6][8] = {
                       };
 
 #define CV          0
+// -4 .. +4 V
+//GAIN: 3500 OFFSET: 0       -3.96
+//GAIN: 3500 OFFSET: 3500     0.0
+//GAIN: 0    OFFSET: 3500     4.01
+// 8 Octave => 8 * 12 = 96 notes
+// 8 Octave => 7000 DAC values => 7000 / 96 = 72 DAC values between two consecutive note
+
 #define MOD_AMT     1
+// 0 .. +4 V
+//GAIN: 0    OFFSET: 0        0
+//GAIN: 0    OFFSET: 3500     4.01
+
 #define WAVE_SELECT 2
+// -2 .. +4 V
+//GAIN: 1000 OFFSET: 0       -1.12 SQR
+//GAIN: 1000 OFFSET: 500     -0.54
+//GAIN: 1000 OFFSET: 1000     0.0
+//GAIN: 1000 OFFSET: 1500     0.58 TRI
+//GAIN: 1000 OFFSET: 2000     1.15
+//GAIN: 1000 OFFSET: 2500     1.72 TRI + SAW
+//GAIN: 1000 OFFSET: 3000     2.29
+//GAIN: 1000 OFFSET: 3500     2.87
+//GAIN: 1000 OFFSET: 4000     3.44 SAW
+// Might be a 4 position switch ?
+// -2 V < SQR > -0.3 (+/-0.15) V < TRI > +1.25 (+/-0.3) V < TRI + SAW > +2.7 (+/-0.5) V < SAW > 4V
+
 #define PWM         3
+// 0 .. +2.2 V
+//GAIN: 0    OFFSET: 0        0
+//GAIN: 0    OFFSET: 2000     2.29
+
 #define MIXER       4
+// -2 .. 2 V
+//GAIN: 1500 OFFSET: 0       -1.68
+//GAIN: 1500 OFFSET: 3500     2.30
+
 #define RESONANCE   5
+// 0 .. +2.5 V
+//GAIN: 0    OFFSET: 0        0
+//GAIN: 0    OFFSET: 2000     2.29
+
 #define CUTOFF      6
+// -3 .. +4 V
+//GAIN: 2500 OFFSET: 0       -2.83
+//GAIN: 2500 OFFSET: 2500     0.0
+//GAIN: 0    OFFSET: 0        0.0
+//GAIN: 0    OFFSET: 3500     4.01
+// 6000 DAC values
+
 #define VCA         7
+// 0 .. +4.3 V
+//GAIN: 0    OFFSET: 0        0
+//GAIN: 0    OFFSET: 3500     4.01
 
 static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
-OutputPort<PORT_B> voiceParamSelect;                       // Arduino pin 8, 9, 10 to 4051 11, 10, 9
+// MP4922 pin 1  +5V
+// MP4922 pin 2  NC
+// MP4922 pin 3  ~CS / Arduino pin 7
+// MP4922 pin 4  SCK / Arduino 13 - ICSP/SCK/3
+// MP4922 pin 5  SDI / Arduino 11 - ICSP/MOSI/4
+// MP4922 pin 6  NC
+// MP4922 pin 7  NC
+
+// MP4922 pin 8  ~LDAC / GND
+// MP4922 pin 9  ~SHDN / NC?
+// MP4922 pin 10 Voutb
+// MP4922 pin 11 Vrefb / +5V
+// MP4922 pin 12 GND
+// MP4922 pin 13 Vrefa / +5V
+// MP4922 pin 14 Vouta / 4051 pin 3
+
+
+// 4051 pin 1  | out 4  | MIXER
+// 4051 pin 2  | out 6  | CUTOFF
+// 4051 pin 3  | COMMON | MP4922 pin 14
+// 4051 pin 4  | out 7  | VCA
+// 4051 pin 5  | out 5  | RESONANCE
+// 4051 pin 6  | INH    | Arduino pin 6
+// 4051 pin 7  | Vee    | NC
+// 4051 pin 8  | Vss    | GND
+
+// 4051 pin 9  | C      | Arduino pin 10
+// 4051 pin 10 | B      | Arduino pin 9
+// 4051 pin 11 | A      | Arduino pin 8
+// 4051 pin 12 | out 3  | PWM
+// 4051 pin 13 | out 0  | CV
+// 4051 pin 14 | out 1  | MOD_AMT
+// 4051 pin 15 | out 2  | WAVE_SELECT
+// 4051 pin 16 | Vdd    | +5V
+
+OutputPort<PORT_B> voiceParamSelect;                    // Arduino pin 8, 9, 10 to 4051 11, 10, 9
 Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP4922 pin 3
 Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051 pin 6
 
@@ -124,7 +301,7 @@ void initializeInterrupts() {
   TCNT1  = 0;                               // initialize counter value to 0
                                             // set compare match register for 500 Hz increments
                                             // = 12000000 / (256 * 500) - 1 (must be < 65536)
-  OCR1A = 92;
+  OCR1A = 186;
   TCCR1B |= (1 << WGM12);                   // turn on CTC mode
   TCCR1B |= TIMER1_PRESCALER;               // Set CS12, CS11 and CS10 bits for prescaler
   TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
@@ -195,7 +372,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
-  writeDACB(waveForm[LFO_SAW][lfoWavePointer]);
+  writeDACB(waveForm[LFO_TRI][lfoWavePointer]);
 
   lfoWavePointer++;
   if(lfoWavePointer == 120)
@@ -211,7 +388,7 @@ void writeDACB(uint16_t data){
 
 void setup() {
 
-  m_outputChipSelectDAC = LOW;    // Disable DAC (~CS)
+  m_outputChipSelectDAC = LOW;     // Disable DAC (~CS)
   m_outputDisableMultiplex = HIGH; // Disable Multiplex
 
   SPI.begin();
@@ -227,7 +404,7 @@ void setup() {
 void updateVoice(uint16_t *voice) {
   //-4..+4V
   // voice[0][CV] = constrain((analogRead(A0) << 2) & 0xffc, 0, 4095);
-  voice[CV] = 4095;
+  voice[CV] = 2048;
 
   //0..+4V
   // voice[MOD_AMT] = 2048;
@@ -244,7 +421,7 @@ void updateVoice(uint16_t *voice) {
   //0..+2V
   // voice[PWM] = 3072;
   // constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
-  // voice[PWM] = constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
+  voice[PWM] = constrain(2048 + (waveForm[LFO_SINE][lfoWavePointer] >> 1), 2048, 4095);
 
   //-2..+2V
   // voice[MIXER] = 0;
@@ -256,8 +433,8 @@ void updateVoice(uint16_t *voice) {
   voice[CUTOFF] = constrain(4095 - waveForm[LFO_SINE][lfoWavePointer], 0, 4095);
 
   //0..+4V
-  // voice[VCA] = constrain(2048 + (waveForm[LFO_TRI][lfoWavePointer] >> 1), 2048, 4095);
-  voice[VCA] = 4095;
+  voice[VCA] = constrain(2048 + (waveForm[LFO_TRI][lfoWavePointer] >> 1), 2048, 4095);
+  // voice[VCA] = 4095;
 }
 
 void loop() {
