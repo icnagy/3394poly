@@ -89,6 +89,25 @@
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
 
+#define LFO_SAW 0
+#define LFO_RMP 1
+#define LFO_TRI 2
+#define LFO_SQR 3
+#define LFO_PHASE_UP 0
+#define LFO_PHASE_DOWN 1
+#define LFO_MIN_VALUE 0
+#define LFO_MAX_VALUE 1024
+
+typedef struct lfo_structure {
+  uint8_t shape;
+  uint8_t phase;
+  uint16_t rate;
+  uint16_t min_value;
+  uint16_t max_value;
+  uint16_t accumulator;
+  uint16_t value;
+} lfo;
+
 #define ENV_IDLE 0
 #define ENV_ATTACK 1
 #define ENV_DECAY 2
@@ -131,22 +150,41 @@ typedef struct voice_structure {
     ENV_IDLE, // state
     VCA_MIN_VALUE, // min_value
     VCA_MAX_VALUE, // max_value
-    VCA_MIN_VALUE, // value
+    VCA_MIN_VALUE, // value 0 - 3500
     100,  // attack_rate
     200,  // decay_rate
     2500, // sustain_value
-    50,  // release_rate
-  }; // 0 - 3500
+    50  // release_rate
+  };
   envelope_structure vcf_envelope = {
     ENV_IDLE,
     VCF_MIN_VALUE, // min_value
     VCF_MAX_VALUE, // max_value
-    VCF_MIN_VALUE, // value
+    VCF_MIN_VALUE, // value 0 - 6000
     66,  // attack_rate
     400,  // decay_rate
     5000, // sustain_value
-    30,  // release_rate
-  }; // 0 - 6000
+    30  // release_rate
+  };
+  lfo_structure lfo = {
+    LFO_TRI,       // shape
+    LFO_PHASE_UP,  // phase
+    10,           // rate
+    LFO_MIN_VALUE, // min_value
+    LFO_MAX_VALUE, // max_value
+    LFO_MIN_VALUE, // accumulator
+    LFO_MIN_VALUE  // value
+  };
+  uint16_t lfoModAmount[8] {
+    0, // LFO to PITCH
+    0, // LFO to MOD_AMT
+    0, // LFO to WAVE SELECT
+    0, // LFO to PWM
+    0, // LFO to MIXER
+    0, // LFO to RESONANCE
+    0, // LFO to VCF
+    0  // LFO to VCA
+  };
   uint16_t dacValues[8] = {
     CV_MAX_VALUE / 2,          //   0..7000,   // Key CV
     MOD_AMT_MAX_VALUE / 2,     //   0..3500,   // Mod Amount
@@ -160,23 +198,61 @@ typedef struct voice_structure {
   uint8_t gate;
 } voice;
 
-voice voicess[8];
+voice voicess[6];
 
 void printVoiceParams(voice *voice) {
-  Serial.print("Gate: ");Serial.print(voice->gate);
-  Serial.print("\tVCA_ENV_STATE: ");Serial.print(voice->vca_envelope.state);
-  Serial.print("\tVCA_ENV_VALUE: ");Serial.print(voice->vca_envelope.value);
-  Serial.print("\tVCF_ENV_STATE: ");Serial.print(voice->vcf_envelope.state);
-  Serial.print("\tVCF_ENV_VALUE: ");Serial.println(voice->vcf_envelope.value);
+  Serial.print("Voice: ");Serial.print(voice->gate);
+  Serial.print("\tVCA_STATE: ");Serial.print(voice->vca_envelope.state);
+  Serial.print("\tVCA_VALUE: ");Serial.print(voice->vca_envelope.value);
+  Serial.print("\tVCF_STATE: ");Serial.print(voice->vcf_envelope.state);
+  Serial.print("\tVCF_VALUE: ");Serial.print(voice->vcf_envelope.value);
 
-//  Serial.print("VCA_ENV_MIN_VALUE: ");Serial.println(voice->vca_envelope.min_value);
-//  Serial.print("VCA_ENV_MAX_VALUE: ");Serial.println(voice->vca_envelope.max_value);
-//  Serial.print("VCA_ENV_ATTACK_RATE: ");Serial.println(voice->vca_envelope.attack_rate);
-//  Serial.print("VCA_ENV_DECAY_RATE: ");Serial.println(voice->vca_envelope.decay_rate);
-//  Serial.print("VCA_ENV_SUSTAIN_VALUE: ");Serial.println(voice->vca_envelope.sustain_value);
-//  Serial.print("VCA_ENV_RELEASE_RATE: ");Serial.println(voice->vca_envelope.release_rate);
+  Serial.print("\tLFO_SHAPE: ");Serial.print(voice->lfo.shape);
+  Serial.print("\tLFO_ACC: ");Serial.print(voice->lfo.accumulator);
+  Serial.print("\tLFO_VALUE: ");Serial.println(voice->lfo.value);
 }
 
+void printLfoParams(voice *voice) {
+  Serial.print("LFO_SHAPE: ");Serial.print(voice->lfo.shape);
+  Serial.print("\tLFO_ACC: ");Serial.print(voice->lfo.accumulator);
+  Serial.print("\tLFO_VALUE: ");Serial.println(voice->lfo.value);
+}
+
+void updateLfo(voice *voice) {
+  voice->lfo.accumulator += voice->lfo.rate;
+  if(voice->lfo.accumulator >= voice->lfo.max_value)
+    voice->lfo.accumulator = voice->lfo.min_value;
+
+  if(voice->lfo.accumulator < voice->lfo.max_value >> 1)
+    voice->lfo.phase = LFO_PHASE_UP;
+  else
+    voice->lfo.phase = LFO_PHASE_DOWN;
+
+  switch(voice->lfo.shape){
+    case LFO_SAW:
+      voice->lfo.value = voice->lfo.max_value - voice->lfo.accumulator;
+      break;
+    case LFO_RMP:
+      voice->lfo.value = voice->lfo.accumulator;
+      break;
+    case LFO_TRI:
+      if(voice->lfo.phase == LFO_PHASE_UP)
+        voice->lfo.value = voice->lfo.accumulator << 1;
+      else
+        voice->lfo.value = voice->lfo.max_value - voice->lfo.accumulator << 1;
+      break;
+    case LFO_SQR:
+      if(voice->lfo.phase == LFO_PHASE_UP)
+        voice->lfo.value = voice->lfo.min_value;
+      else
+        voice->lfo.value = voice->lfo.max_value;
+      break;
+    default:
+    break;
+  }
+}
+
+// issue when *_rate is 0!
 void updateEnvelope(envelope_structure *envelope, voice *voice) {
   // Check gate
   switch(envelope->state) {
@@ -239,62 +315,6 @@ void voiceNoteOff(voice *voice) {
   voice->gate = 0;
 }
 
-#define LFO_SAW 0
-#define LFO_SINE 1
-#define LFO_TRI 2
-
-static uint16_t waveForm[3][120] =   {
-  // Sawtooth wave
-  {
-    0x022, 0x044, 0x066, 0x088, 0x0aa, 0x0cc, 0x0ee, 0x110, 0x132, 0x154,
-    0x176, 0x198, 0x1ba, 0x1dc, 0x1fe, 0x220, 0x242, 0x264, 0x286, 0x2a8,
-    0x2ca, 0x2ec, 0x30e, 0x330, 0x352, 0x374, 0x396, 0x3b8, 0x3da, 0x3fc,
-    0x41e, 0x440, 0x462, 0x484, 0x4a6, 0x4c8, 0x4ea, 0x50c, 0x52e, 0x550,
-    0x572, 0x594, 0x5b6, 0x5d8, 0x5fa, 0x61c, 0x63e, 0x660, 0x682, 0x6a4,
-    0x6c6, 0x6e8, 0x70a, 0x72c, 0x74e, 0x770, 0x792, 0x7b4, 0x7d6, 0x7f8,
-    0x81a, 0x83c, 0x85e, 0x880, 0x8a2, 0x8c4, 0x8e6, 0x908, 0x92a, 0x94c,
-    0x96e, 0x990, 0x9b2, 0x9d4, 0x9f6, 0xa18, 0xa3a, 0xa5c, 0xa7e, 0xaa0,
-    0xac2, 0xae4, 0xb06, 0xb28, 0xb4a, 0xb6c, 0xb8e, 0xbb0, 0xbd2, 0xbf4,
-    0xc16, 0xc38, 0xc5a, 0xc7c, 0xc9e, 0xcc0, 0xce2, 0xd04, 0xd26, 0xd48,
-    0xd6a, 0xd8c, 0xdae, 0xdd0, 0xdf2, 0xe14, 0xe36, 0xe58, 0xe7a, 0xe9c,
-    0xebe, 0xee0, 0xf02, 0xf24, 0xf46, 0xf68, 0xf8a, 0xfac, 0xfce, 0xffe
-  },
-  // Sine wave
-  {
-    0x000, 0x044, 0x088, 0x0cc, 0x110, 0x154, 0x198, 0x1dc, 0x220, 0x264,
-    0x2a8, 0x2ec, 0x330, 0x374, 0x3b8, 0x3fc, 0x440, 0x484, 0x4c8, 0x50c,
-    0x550, 0x594, 0x5d8, 0x61c, 0x660, 0x6a4, 0x6e8, 0x72c, 0x770, 0x7b4,
-    0x7f8, 0x83c, 0x880, 0x8c4, 0x908, 0x94c, 0x990, 0x9d4, 0xa18, 0xa5c,
-    0xaa0, 0xae4, 0xb28, 0xb6c, 0xbb0, 0xbf4, 0xc38, 0xc7c, 0xcc0, 0xd04,
-    0xd48, 0xd8c, 0xdd0, 0xe14, 0xe58, 0xe9c, 0xee0, 0xf24, 0xf68, 0xfac,
-    0xffe, 0xfac, 0xf68, 0xf24, 0xee0, 0xe9c, 0xe58, 0xe14, 0xdd0, 0xd8c,
-    0xd48, 0xd04, 0xcc0, 0xc7c, 0xc38, 0xbf4, 0xbb0, 0xb6c, 0xb28, 0xae4,
-    0xaa0, 0xa5c, 0xa18, 0x9d4, 0x990, 0x94c, 0x908, 0x8c4, 0x880, 0x83c,
-    0x7f8, 0x7b4, 0x770, 0x72c, 0x6e8, 0x6a4, 0x660, 0x61c, 0x5d8, 0x594,
-    0x550, 0x50c, 0x4c8, 0x484, 0x440, 0x3fc, 0x3b8, 0x374, 0x330, 0x2ec,
-    0x2a8, 0x264, 0x220, 0x1dc, 0x198, 0x154, 0x110, 0x0cc, 0x088, 0x044
-  },
-  // Triangle wave
-  {
-    0x7ff, 0x86a, 0x8d5, 0x93f, 0x9a9, 0xa11, 0xa78, 0xadd, 0xb40, 0xba1,
-    0xbff, 0xc5a, 0xcb2, 0xd08, 0xd59, 0xda7, 0xdf1, 0xe36, 0xe77, 0xeb4,
-    0xeec, 0xf1f, 0xf4d, 0xf77, 0xf9a, 0xfb9, 0xfd2, 0xfe5, 0xff3, 0xffc,
-    0xfff, 0xffc, 0xff3, 0xfe5, 0xfd2, 0xfb9, 0xf9a, 0xf77, 0xf4d, 0xf1f,
-    0xeec, 0xeb4, 0xe77, 0xe36, 0xdf1, 0xda7, 0xd59, 0xd08, 0xcb2, 0xc5a,
-    0xbff, 0xba1, 0xb40, 0xadd, 0xa78, 0xa11, 0x9a9, 0x93f, 0x8d5, 0x86a,
-    0x7ff, 0x794, 0x729, 0x6bf, 0x655, 0x5ed, 0x586, 0x521, 0x4be, 0x45d,
-    0x3ff, 0x3a4, 0x34c, 0x2f6, 0x2a5, 0x257, 0x20d, 0x1c8, 0x187, 0x14a,
-    0x112, 0x0df, 0x0b1, 0x087, 0x064, 0x045, 0x02c, 0x019, 0x00b, 0x002,
-    0x000, 0x002, 0x00b, 0x019, 0x02c, 0x045, 0x064, 0x087, 0x0b1, 0x0df,
-    0x112, 0x14a, 0x187, 0x1c8, 0x20d, 0x257, 0x2a5, 0x2f6, 0x34c, 0x3a4,
-    0x3ff, 0x45d, 0x4be, 0x521, 0x586, 0x5ed, 0x655, 0x6bf, 0x729, 0x794
-  }
-};
-int lfoWavePointer = 0;
-
-static constexpr unsigned k_pinDisableMultiplex = 6;
-static constexpr unsigned k_pinChipSelectDAC = 7;
-
 // MP4922 pin 1  +5V
 // MP4922 pin 2  NC
 // MP4922 pin 3  ~CS / Arduino pin 7
@@ -351,7 +371,11 @@ static constexpr unsigned k_pinChipSelectDAC = 7;
 // 4051 pin 15 | out 2  | AS3394 pin 7 WAVE_SELECT
 // 4051 pin 16 | Vdd    | +5V
 
+static constexpr unsigned k_pinDisableMultiplex = 6;
+static constexpr unsigned k_pinChipSelectDAC = 7;
+
 OutputPort<PORT_B> voiceParamSelect;                    // Arduino pin 8, 9, 10 to 4051 11, 10, 9
+OutputPort<PORT_D, 2, 3> voiceSelectPort;               // Arduino pin 3, 4, 5
 Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP4922 pin 3
 Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051 pin 6
 
@@ -422,22 +446,24 @@ void initializeInterrupts() {
 
 uint8_t irq1Count = 0;
 
-uint8_t voiceSelect = 0;
+uint8_t voiceNumber = 0;
 uint8_t voiceParamNumber = 0;
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
-  voiceSelect = irq1Count >> 3;         // 0..5 => 0b000xxx ... 0b101xxx
+  voiceNumber = irq1Count >> 3;         // 0..5 => 0b000xxx ... 0b101xxx
   voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
 
   m_outputDisableMultiplex = HIGH;          // Disable Multiplex
 
-  updateVoiceParam[voiceParamNumber](voicess[voiceSelect].dacValues[voiceParamNumber]);
-  voiceParamSelect.write(irq1Count);        // Voice and Param Select
+  updateVoiceParam[voiceParamNumber](voicess[voiceNumber].dacValues[voiceParamNumber]);
+  voiceSelectPort.write(voiceNumber);
+  voiceParamSelect.write(voiceParamNumber); // Voice and Param Select
 
   m_outputDisableMultiplex = LOW;           // Enable Multiplex
 
+  // Serial.println(irq1Count);
   irq1Count++;
-  if(irq1Count > 48)
+  if(irq1Count > 47)
     irq1Count = 0;
 }
 
@@ -447,8 +473,7 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   // Update Envelope
   updateEnvelope(&voicess[0].vca_envelope, &voicess[0]);
   updateEnvelope(&voicess[0].vcf_envelope, &voicess[0]);
-//  updateEnvelope(&voicess[1].vca_envelope, &voicess[1]);
-//  updateEnvelope(&voicess[1].vcf_envelope, &voicess[1]);
+  updateLfo(&voicess[0]);
 
   if(irq2Count == 255){
     voicess[0].gate == 1 ? voiceNoteOff(&voicess[0]) : voiceNoteOn(&voicess[0]);
@@ -474,7 +499,7 @@ void setup() {
 
 void loop() {
   delay(10);
-  printVoiceParams(&voicess[0]);
+  // printVoiceParams(&voicess[0]);
 
 //  Serial.print(voicess[0].vca_envelope.value); Serial.print(" ");
 //  Serial.print(voicess[0].vcf_envelope.value); Serial.print(" ");
@@ -494,41 +519,49 @@ void updatePitch(uint16_t pitch) {
 
   uint16_t gain = pitch > 3500 ? 0 : 3500;
   uint16_t offset = pitch > 3500 ? (pitch - 3500) : pitch;
+
+  // Serial.print("CV: ");Serial.print(pitch);
+
   updateDAC(gain, offset);
 }
 
 void updateModAmount(uint16_t modAmount) {
+  // Serial.print("|MOD: ");Serial.print(modAmount);
   updateDAC(MOD_AMT_GAIN, constrain(modAmount,
                                     MOD_AMT_MIN_VALUE,
                                     MOD_AMT_MAX_VALUE));
 }
 
 void updateWaveSelect(uint16_t waveSelect) {
+  // Serial.print("|WS: ");Serial.print(waveSelect);
   updateDAC(WAVE_SELECT_GAIN, constrain(waveSelect,
                                         WAVE_SELECT_MIN_VALUE,
                                         WAVE_SELECT_MAX_VALUE));
 }
 
 void updatePwm(uint16_t pwm){
+  // Serial.print("|PWM: ");Serial.print(pwm);
   updateDAC(PWM_GAIN, constrain(pwm,
                                 PWM_MIN_VALUE,
                                 PWM_MAX_VALUE));
 }
 
 void updateMixer(uint16_t mixer) {
+  // Serial.print("|MIX: ");Serial.print(mixer);
   updateDAC(MIXER_GAIN, constrain(mixer,
                                   MIXER_MIN_VALUE,
                                   MIXER_MAX_VALUE));
 }
 
 void updateResonance(uint16_t resonance) {
+  // Serial.print("|RES: ");Serial.print(resonance);
   updateDAC(RESONANCE_GAIN, constrain(resonance,
                                       RESONANCE_MIN_VALUE,
                                       RESONANCE_MAX_VALUE));
 }
 
 void updateCutoff(uint16_t cutoff) {
-
+  // Serial.print("|VCF: ");Serial.print(cutoff);
   if(cutoff > CUTOFF_GAIN_THRESHOLD) {
     updateDAC(CUTOFF_GAIN_HIGH, constrain((cutoff - CUTOFF_GAIN_THRESHOLD),
                                           VCF_MIN_VALUE,
@@ -541,13 +574,18 @@ void updateCutoff(uint16_t cutoff) {
 }
 
 void updateVca(uint16_t vca) {
+  // Serial.print("|VCA: ");Serial.print(vca);
   updateDAC(VCA_GAIN, constrain(vca,
                                 VCA_MIN_VALUE,
                                 VCA_MAX_VALUE));
+  // Serial.println();
 }
 
 void updateDAC(uint16_t gain, uint16_t offset) {
   uint16_t command = k_writeChannelA | (gain & 0x0FFF);
+
+  // Serial.print("|G: ");Serial.print(gain);
+  // Serial.print("|O: ");Serial.print(offset);
 
   m_outputChipSelectDAC = LOW;     // Disable DAC latch
   SPI.transfer(command >> 8);
