@@ -4,6 +4,11 @@
 arduino-cli compile -v --fqbn arduino:avr:uno && arduino-cli upload -v -p /dev/$(ls /dev | grep cu.usb) --fqbn arduino:avr:uno && screen /dev/$(ls /dev | grep tty.usb) 115200
 ```
 
+### Patches/Modulation
+
+Patch parameters are 8 bit 0..255.
+Internal modulation attributes can/could be calculated via 8+8 bit integer/fraction math and scaled to the relevant DAC intervals.
+
 ### Doodle
 
 12 bit DAC

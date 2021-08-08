@@ -6,6 +6,18 @@
 #define VOLT_PER_OCTAVE_NOTE 0.75/12
 #define DAC_STEP_PER_NOTE (VOLT_PER_OCTAVE_NOTE) / (VREF / DAC_STEPS)
 
+enum DAC_PARAM {
+  DAC_PARAM_CV,
+  DAC_PARAM_MOD_AMT,
+  DAC_PARAM_WAVE_SELECT,
+  DAC_PARAM_PWM,
+  DAC_PARAM_MIXER,
+  DAC_PARAM_CUTOFF,
+  DAC_PARAM_RESONANCE,
+  DAC_PARAM_VCA,
+  DAC_PARAM_LAST
+};
+
 #define CV                    0
 #define CV_GAIN_LOW           3500
 #define CV_GAIN_SWITCH_POINT  3500
@@ -98,6 +110,14 @@
 // 0 .. +4.3 V
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
+
+enum LFO_SHAPE {
+  LFO_SHAPE_SAW,
+  LFO_SHAPE_RMP,
+  LFO_SHAPE_TRI,
+  LFO_SHAPE_SQR,
+  LFO_SHAPE_LAST
+};
 
 #define LFO_SAW         0
 #define LFO_RMP         1
@@ -223,8 +243,8 @@ typedef struct voice_structure {
 voice voicess[6];
 
 void printVoiceDacValues(voice *voice) {
-  Serial.print("Voice: ");Serial.print(voice->gate);
-  Serial.print("CV: ");Serial.print(voice->dacValues[CV]);
+  Serial.print("Gate: ");Serial.print(voice->gate);
+  Serial.print(" CV: ");Serial.print(voice->dacValues[CV]);
   Serial.print("\tMOD: ");Serial.print(voice->dacValues[MOD_AMT]);
   Serial.print("\tWAV: ");Serial.print(voice->dacValues[WAVE_SELECT]);
   Serial.print("\tPWM: ");Serial.print(voice->dacValues[PWM]);
@@ -442,14 +462,6 @@ uint8_t timer2Prescaler[] = {
   (1 << CS22) | (1 << CS21) | (1 << CS20)  // 1024
 };
 
-#define TIMER1_PRESCALER timer1Prescaler[1]
-#define IRQ1_FREQ
-#define DIVIDER
-#define TIMER1_COUNTER ((16000000.0 / (1024 * 125)) - 1)
-
-#define TIMER2_PRESCALER timer2Prescaler[4]
-#define TIMER2_COUNTER ((16000000 / (1024 * 10)) - 1)
-
 // http://www.8bit-era.cz/arduino-timer-interrupts-calculator.html
 void initializeInterrupts() {
   cli();                                    // stop interrupts
@@ -460,8 +472,7 @@ void initializeInterrupts() {
   TCCR1B = 0;                               // same for TCCR1B
   TCNT1  = 0;                               // initialize counter value to 0
                                             // set compare match register for 125 Hz increments
-                                            // = 12000000 / (1024 * 125) - 1 (must be < 65536)
-  OCR1A = 124;
+  OCR1A = 124;                              // = 12000000 / (1024 * 125) - 1 (must be < 65536)
   TCCR1B |= (1 << WGM12);                   // turn on CTC mode
   TCCR1B |= (1 << CS12) | (0 << CS11) | (1 << CS10);
                                             // Set CS12, CS11 and CS10 bits for prescaler
@@ -473,10 +484,10 @@ void initializeInterrupts() {
   TCCR2B = 0;                               // set entire TCCR2B register to 0
   TCNT2  = 0;                               // initialize counter value to 0
                                             // set compare match register for 120 Hz increments (must be < 65536)
-                                            // = ((12000000 / (1024 * 120)) - 1) <= 256
-  OCR2A = 1170;
+  OCR2A = 1170;                             // = ((12000000 / (1024 * 120)) - 1) <= 256
   TCCR2A |= (1 << WGM21);                   // turn on CTC mode
-  TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);               // Set CS22, CS21 and CS20 bits for 256 prescaler
+  TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);
+                                            // Set CS22, CS21 and CS20 bits for 256 prescaler
   TIMSK2 |= (1 << OCIE2A);                  // enable timer compare interrupt
 
   sei();                                    // allow interrupts
@@ -514,7 +525,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   m_outputDisableMultiplex = LOW;       // Enable Multiplex
 
   irq1Count++;
-  if(irq1Count > (NUMBER_OF_VOICES * NUMBER_OF_PARAMS) - 1)
+  if(irq1Count > 47)
     irq1Count = 0;
 }
 
@@ -546,6 +557,8 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println("Hello world");
+
+  panic();
 
   initializeInterrupts();
 }
@@ -692,12 +705,18 @@ void loop() {
         }
         break;
     }
-    printVoiceDacValues(&voicess[selectedVoice]);
+    printVoiceDacValues(&voicess[0]);
+    printVoiceDacValues(&voicess[1]);
+    printVoiceDacValues(&voicess[2]);
+    printVoiceDacValues(&voicess[3]);
+    printVoiceDacValues(&voicess[4]);
+    printVoiceDacValues(&voicess[5]);
+    Serial.println("------------------------------");
   }
 }
 
 void panic() {
-  for(int i=0; i < 6; i++) {
+  for(int i=0; i < NUMBER_OF_VOICES; i++) {
     voicess[i].gate = 0;
     voicess[i].vca_envelope.value = 0;
     voicess[i].vcf_envelope.value = 0;
@@ -710,7 +729,7 @@ void panic() {
     voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;
     voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;
     voicess[i].dacValues[CUTOFF] =      CUTOFF_ZERO_VALUE;
-    voicess[i].dacValues[VCA] =         2500; // VCA_MIN_VALUE
+    voicess[i].dacValues[VCA] =         VCA_MIN_VALUE; //2500; //
   }
 }
 
