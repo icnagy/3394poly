@@ -68,20 +68,21 @@
 // GAIN: 1500 OFFSET: 1500     0.0  VCA2 -6dB VCA1 -6dB
 // GAIN: 1500 OFFSET: 3000     1.72 VCA2 OFF  VCA1 FULL
 
-#define RESONANCE   5
-#define RESONANCE_GAIN 0
-#define RESONANCE_MIN_VALUE   0
-#define RESONANCE_MAX_VALUE   2000
+#define RESONANCE           5
+#define RESONANCE_GAIN      0
+#define RESONANCE_MIN_VALUE 0
+#define RESONANCE_MAX_VALUE 2000
 // 0 .. +2.5 V
 // GAIN: 0    OFFSET: 0        0
 // GAIN: 0    OFFSET: 2000     2.29
 
-#define CUTOFF      6
-#define CUTOFF_GAIN_LOW 2500
+#define CUTOFF                6
+#define CUTOFF_GAIN_LOW       2500
 #define CUTOFF_GAIN_THRESHOLD 2500
-#define CUTOFF_GAIN_HIGH 0
-#define CUTOFF_MIN_VALUE 0
-#define CUTOFF_MAX_VALUE 6000
+#define CUTOFF_GAIN_HIGH      0
+#define CUTOFF_MIN_VALUE      0
+#define CUTOFF_MAX_VALUE      6000
+#define CUTOFF_ZERO_VALUE     2500
 // -3 .. +4 V
 // 3/8V per octave
 // GAIN: 2500 OFFSET: 0       -2.83  24kHz
@@ -90,22 +91,22 @@
 // GAIN: 0    OFFSET: 3500     4.01    0Hz
 // 6000 DAC values
 
-#define VCA         7
-#define VCA_GAIN    0
+#define VCA           7
+#define VCA_GAIN      0
 #define VCA_MIN_VALUE 0
 #define VCA_MAX_VALUE 3000
 // 0 .. +4.3 V
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
 
-#define LFO_SAW 0
-#define LFO_RMP 1
-#define LFO_TRI 2
-#define LFO_SQR 3
-#define LFO_PHASE_UP 0
-#define LFO_PHASE_DOWN 1
-#define LFO_MIN_VALUE 0
-#define LFO_MAX_VALUE 1024
+#define LFO_SAW         0
+#define LFO_RMP         1
+#define LFO_TRI         2
+#define LFO_SQR         3
+#define LFO_PHASE_UP    0
+#define LFO_PHASE_DOWN  1
+#define LFO_MIN_VALUE   0
+#define LFO_MAX_VALUE   1024
 
 typedef struct lfo_structure {
   uint8_t shape;
@@ -213,9 +214,9 @@ typedef struct voice_structure {
 //   MOD_AMT_MIN_VALUE,             // Mod Amount
 //   WAVE_SELECT_ZERO_VALUE,        // Wave Select
 //   PWM_MIN_VALUE,                 // PWM
-//   1500, // MIXER_MAX_VALUE / 2,  // Mixer Balance
+//   MIXER_ZERO_VALUE,              // Mixer Balance
 //   RESONANCE_MIN_VALUE,           // Resonance
-//   2500, // CUTOFF_MAX_VALUE / 2,    // Cutoff
+//   CUTOFF_ZERO_VALUE,             // Cutoff
 //   VCA_MIN_VALUE                  // VCA
 // };
 
@@ -404,6 +405,9 @@ void voiceNoteOff(voice *voice) {
 // 4051 pin 15 | out 2  | AS3394 pin 7 WAVE_SELECT
 // 4051 pin 16 | Vdd    | +5V
 
+#define NUMBER_OF_VOICES 6
+#define NUMBER_OF_PARAMS 8
+
 static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
@@ -441,26 +445,27 @@ uint8_t timer2Prescaler[] = {
 #define TIMER1_PRESCALER timer1Prescaler[1]
 #define IRQ1_FREQ
 #define DIVIDER
-#define TIMER1_COUNTER ((16000000.0 / (256 * 142)) - 1)
+#define TIMER1_COUNTER ((16000000.0 / (1024 * 125)) - 1)
 
 #define TIMER2_PRESCALER timer2Prescaler[4]
 #define TIMER2_COUNTER ((16000000 / (1024 * 10)) - 1)
 
+// http://www.8bit-era.cz/arduino-timer-interrupts-calculator.html
 void initializeInterrupts() {
-   cli();                                    // stop interrupts
+  cli();                                    // stop interrupts
 
-   // TIMER 1 for interrupt frequency 1000 Hz:
-   TIMSK1 = 0;                               // disable timer compare interrupt
-   TCCR1A = 0;                               // set entire TCCR1A register to 0
-   TCCR1B = 0;                               // same for TCCR1B
-   TCNT1  = 0;                               // initialize counter value to 0
-                                             // set compare match register for 500 Hz increments
-                                             // = 12000000 / (256 * 500) - 1 (must be < 65536)
-   OCR1A = 124;
-   TCCR1B |= (1 << WGM12);                   // turn on CTC mode
-   TCCR1B |= (1 << CS02) | (0 << CS01) | (1 << CS00);
-                                             // Set CS12, CS11 and CS10 bits for prescaler
-   TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
+  // TIMER 1 for interrupt frequency 1000 Hz:
+  TIMSK1 = 0;                               // disable timer compare interrupt
+  TCCR1A = 0;                               // set entire TCCR1A register to 0
+  TCCR1B = 0;                               // same for TCCR1B
+  TCNT1  = 0;                               // initialize counter value to 0
+                                            // set compare match register for 125 Hz increments
+                                            // = 12000000 / (1024 * 125) - 1 (must be < 65536)
+  OCR1A = 124;
+  TCCR1B |= (1 << WGM12);                   // turn on CTC mode
+  TCCR1B |= (1 << CS12) | (0 << CS11) | (1 << CS10);
+                                            // Set CS12, CS11 and CS10 bits for prescaler
+  TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
 
   // TIMER 2 for interrupt frequency 120 Hz:
   TIMSK2 = 0;                               // disable timer compare interrupt
@@ -468,13 +473,13 @@ void initializeInterrupts() {
   TCCR2B = 0;                               // set entire TCCR2B register to 0
   TCNT2  = 0;                               // initialize counter value to 0
                                             // set compare match register for 120 Hz increments (must be < 65536)
-                                            // = 12000000 / (256 * 120) - 1 <= 256
+                                            // = ((12000000 / (1024 * 120)) - 1) <= 256
   OCR2A = 1170;
   TCCR2A |= (1 << WGM21);                   // turn on CTC mode
-  TCCR2B |= TIMER2_PRESCALER;               // Set CS22, CS21 and CS20 bits for 256 prescaler
+  TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);               // Set CS22, CS21 and CS20 bits for 256 prescaler
   TIMSK2 |= (1 << OCIE2A);                  // enable timer compare interrupt
 
-   sei();                                    // allow interrupts
+  sei();                                    // allow interrupts
 }
 
 uint8_t irq1Count = 0;
@@ -498,6 +503,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   // DAC has 4.5uS settling time
   // CPU runs at 16MHz
   // 0.000045/(1/16000000) = 720+ cycles to wait
+  // 22.222 Hz
 
   Serial.println(voiceNumber);
 
@@ -508,32 +514,24 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   m_outputDisableMultiplex = LOW;       // Enable Multiplex
 
   irq1Count++;
-  if(irq1Count > 47)
+  if(irq1Count > (NUMBER_OF_VOICES * NUMBER_OF_PARAMS) - 1)
     irq1Count = 0;
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   // Update Envelope
-  for(int i = 0; i < 6; i ++) {
+  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+
     updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
     voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+
     updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
     voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
+
     // updateLfo(&voicess[i]);
     // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
   }
 
-  if(irq2Count == 255){
-    irq2Count = 0;
-    // voicess[0].gate == 1 ? voiceNoteOff(&voicess[0]) : voiceNoteOn(&voicess[0]);
-    // voicess[1].gate == 1 ? voiceNoteOff(&voicess[1]) : voiceNoteOn(&voicess[1]);
-    // voicess[2].gate == 1 ? voiceNoteOff(&voicess[2]) : voiceNoteOn(&voicess[2]);
-    // voicess[3].gate == 1 ? voiceNoteOff(&voicess[3]) : voiceNoteOn(&voicess[3]);
-    // voicess[4].gate == 1 ? voiceNoteOff(&voicess[4]) : voiceNoteOn(&voicess[4]);
-    // voicess[5].gate == 1 ? voiceNoteOff(&voicess[5]) : voiceNoteOn(&voicess[5]);
-  }
-
-  irq2Count++;
 }
 
 void setup() {
@@ -548,28 +546,6 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println("Hello world");
-  // voicess[1].gate = 1;
-  // voicess[3].gate = 1;
-  // voicess[5].gate = 1;
-
-  // voicess[0].dacValues[CV] = 0;
-  // voicess[0].dacValues[WAVE_SELECT] = WAVE_SELECT_SQR;
-  // voicess[0].dacValues[CUTOFF] = CUTOFF_MIN_VALUE;
-  // voicess[0].dacValues[RESONANCE] = RESONANCE_MAX_VALUE >> 2;
-
-  // voicess[1].dacValues[CV] = 1000;
-  // voicess[1].dacValues[WAVE_SELECT] = WAVE_SELECT_TRI_SAW;
-  // voicess[1].dacValues[CUTOFF] = CUTOFF_MAX_VALUE >> 1;
-  // voicess[1].dacValues[RESONANCE] = RESONANCE_MAX_VALUE >> 2;
-
-  // voicess[2].dacValues[CV] = 1500;
-  // voicess[2].dacValues[CUTOFF] = CUTOFF_MAX_VALUE>>1;
-  // voicess[3].dacValues[CV] = 2000;
-  // voicess[3].dacValues[CUTOFF] = CUTOFF_MAX_VALUE>>2;
-  // voicess[4].dacValues[CV] = 2500;
-  // voicess[4].dacValues[CUTOFF] = CUTOFF_MAX_VALUE>>3;
-  // voicess[5].dacValues[CV] = 4000;
-  // voicess[5].dacValues[CUTOFF] = CUTOFF_MAX_VALUE>>4;
 
   initializeInterrupts();
 }
@@ -584,7 +560,11 @@ void loop() {
     rx_byte = Serial.read();       // get the character
     switch(rx_byte){
       case 49:
-      case 50: {
+      case 50:
+      case 51:
+      case 52:
+      case 53:
+      case 54: {
           selectedVoice = rx_byte - 49;
           voicess[selectedVoice].gate == 1 ? voiceNoteOff(&voicess[selectedVoice]) : voiceNoteOn(&voicess[selectedVoice]);
         }
@@ -723,14 +703,14 @@ void panic() {
     voicess[i].vcf_envelope.value = 0;
     voicess[i].lfo.value = 0;
 
-    voicess[i].dacValues[CV] = CV_MAX_VALUE / 2;
-    voicess[i].dacValues[MOD_AMT] = MOD_AMT_MIN_VALUE;
-    voicess[i].dacValues[WAVE_SELECT] = 1000;
-    voicess[i].dacValues[PWM] = PWM_MIN_VALUE;
-    voicess[i].dacValues[MIXER] = 1500;
-    voicess[i].dacValues[CUTOFF] = 2500;
-    voicess[i].dacValues[RESONANCE] = 0;
-    voicess[i].dacValues[VCA] = 2500;
+    voicess[i].dacValues[CV] =          CV_MAX_VALUE / 2;
+    voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;
+    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_ZERO_VALUE;
+    voicess[i].dacValues[PWM] =         PWM_MIN_VALUE;
+    voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;
+    voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;
+    voicess[i].dacValues[CUTOFF] =      CUTOFF_ZERO_VALUE;
+    voicess[i].dacValues[VCA] =         2500; // VCA_MIN_VALUE
   }
 }
 
