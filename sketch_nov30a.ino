@@ -466,35 +466,37 @@ uint8_t timer2Prescaler[] = {
 void initializeInterrupts() {
   cli();                                    // stop interrupts
 
-  // TIMER 1 for interrupt frequency 1000 Hz:
-  TIMSK1 = 0;                               // disable timer compare interrupt
-  TCCR1A = 0;                               // set entire TCCR1A register to 0
-  TCCR1B = 0;                               // same for TCCR1B
-  TCNT1  = 0;                               // initialize counter value to 0
-                                            // set compare match register for 125 Hz increments
-  OCR1A = 124;                              // = 12000000 / (1024 * 125) - 1 (must be < 65536)
-  TCCR1B |= (1 << WGM12);                   // turn on CTC mode
-  TCCR1B |= (1 << CS12) | (0 << CS11) | (1 << CS10);
-                                            // Set CS12, CS11 and CS10 bits for prescaler
-  TIMSK1 |= (1 << OCIE1A);                  // enable timer compare interrupt
+  // TIMER 1 for interrupt frequency 1142.0413990007137 Hz:
+  TCCR1A = 0; // set entire TCCR1A register to 0
+  TCCR1B = 0; // same for TCCR1B
+  TCNT1  = 0; // initialize counter value to 0
+  // set compare match register for 1142.0413990007137 Hz increments
+  OCR1A = 14009; // = 16000000 / (1 * 1142.0413990007137) - 1 (must be <65536)
+  // turn on CTC mode
+  TCCR1B |= (1 << WGM12);
+  // Set CS12, CS11 and CS10 bits for 1 prescaler
+  TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
 
-  // TIMER 2 for interrupt frequency 120 Hz:
-  TIMSK2 = 0;                               // disable timer compare interrupt
-  TCCR2A = 0;                               // set entire TCCR2A register to 0
-  TCCR2B = 0;                               // set entire TCCR2B register to 0
-  TCNT2  = 0;                               // initialize counter value to 0
-                                            // set compare match register for 120 Hz increments (must be < 65536)
-  OCR2A = 1170;                             // = ((12000000 / (1024 * 120)) - 1) <= 256
-  TCCR2A |= (1 << WGM21);                   // turn on CTC mode
+  // TIMER 2 for interrupt frequency 1146.788990825688 Hz:
+  TCCR2A = 0; // set entire TCCR2A register to 0
+  TCCR2B = 0; // same for TCCR2B
+  TCNT2  = 0; // initialize counter value to 0
+  // set compare match register for 1146.788990825688 Hz increments
+  OCR2A = 217; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
+  // turn on CTC mode
+  TCCR2B |= (1 << WGM21);
+  // Set CS22, CS21 and CS20 bits for 64 prescaler
   TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);
-                                            // Set CS22, CS21 and CS20 bits for 256 prescaler
-  TIMSK2 |= (1 << OCIE2A);                  // enable timer compare interrupt
+  // enable timer compare interrupt
+  TIMSK2 |= (1 << OCIE2A);
 
   sei();                                    // allow interrupts
 }
 
 uint8_t irq1Count = 0;
-uint8_t irq2Count = 0;
+uint16_t irq2Count = 0;
 
 uint8_t voiceNumber = 0;
 uint8_t voiceParamNumber = 0;
@@ -504,20 +506,9 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
 
   m_outputDisableMultiplex = HIGH;      // Disable Multiplex
-  m_outputChipSelectDAC = LOW;          // Disable DAC latch
 
   // Send value to DAC
   updateVoiceParam[voiceParamNumber](voicess[voiceNumber].dacValues[voiceParamNumber]);
-  m_outputChipSelectDAC = HIGH;         // DAC latch Vout
-
-  // Delay a bit to allow DAC to settle
-  // DAC has 4.5uS settling time
-  // CPU runs at 16MHz
-  // 0.000045/(1/16000000) = 720+ cycles to wait
-  // 22.222 Hz
-
-  Serial.println(voiceNumber);
-
 
   voiceSelectPort.write(voiceNumber);   // Voice Select
   voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
@@ -525,22 +516,34 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   m_outputDisableMultiplex = LOW;       // Enable Multiplex
 
   irq1Count++;
-  if(irq1Count > 47)
+  if(irq1Count > 15)
     irq1Count = 0;
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
-  // Update Envelope
-  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+  // // Update Envelope
+  // for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
 
-    updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
-    voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+  //   updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
+  //   voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
 
-    updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
-    voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
+  //   updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
+  //   voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
 
-    // updateLfo(&voicess[i]);
-    // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+  //   // updateLfo(&voicess[i]);
+  //   // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+  // }
+
+  irq2Count++;
+  if(irq2Count > 1146){
+    irq2Count = 0;
+    printVoiceDacValues(&voicess[0]);
+    printVoiceDacValues(&voicess[1]);
+    printVoiceDacValues(&voicess[2]);
+    printVoiceDacValues(&voicess[3]);
+    printVoiceDacValues(&voicess[4]);
+    printVoiceDacValues(&voicess[5]);
+    Serial.println("------------------------------");
   }
 
 }
@@ -809,7 +812,8 @@ void updateDAC(uint16_t gain, uint16_t offset) {
   // Serial.print("|G: ");Serial.print(gain);
   // Serial.print("|O: ");Serial.print(offset);
 
-  // m_outputChipSelectDAC = LOW;     // Disable DAC latch
+  m_outputChipSelectDAC = LOW;     // Disable DAC latch
+
   SPI.transfer(command >> 8);
   SPI.transfer(command & 0xFF);
 
@@ -822,5 +826,12 @@ void updateDAC(uint16_t gain, uint16_t offset) {
   SPI.transfer(command >> 8);
   SPI.transfer(command & 0xFF);
 
-  // m_outputChipSelectDAC = HIGH;    // DAC latch Vout
+  m_outputChipSelectDAC = HIGH;    // DAC latch Vout
+
+  // Delay a bit to allow DAC to settle
+  // DAC has 4.5uS settling time
+  // CPU runs at 16MHz
+  // 0.0000045/(1/16000000) = 72+ cycles to wait
+  // Serial.println(voiceNumber);
+  __builtin_avr_delay_cycles(72);
 }
