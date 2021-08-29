@@ -203,7 +203,7 @@ typedef struct voice_structure {
   lfo_structure lfo = {
     LFO_TRI,       // shape
     LFO_PHASE_UP,  // phase
-    3,             // rate
+    1,             // rate
     LFO_MIN_VALUE, // min_value
     LFO_MAX_VALUE, // max_value
     LFO_MIN_VALUE, // accumulator
@@ -474,20 +474,6 @@ Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051
 #define k_writeChannelA (((0x0 << 7) | (DAC_A_BUFFER << 6) | (DAC_A_GAIN << 5) | (DAC_A_SHDN << 4)) << 8)
 #define k_writeChannelB (((0x1 << 7) | (DAC_B_BUFFER << 6) | (DAC_B_GAIN << 5) | (DAC_B_SHDN << 4)) << 8)
 
-uint8_t timer1Prescaler[] = {
-  (0 << CS12) | (1 << CS11) | (1 << CS10), // 64
-  (1 << CS12) | (0 << CS11) | (0 << CS10), // 256
-  (1 << CS12) | (0 << CS11) | (1 << CS10)  // 1024
-};
-
-uint8_t timer2Prescaler[] = {
-  (0 << CS22) | (1 << CS21) | (1 << CS20), // 32
-  (1 << CS22) | (0 << CS21) | (0 << CS20), // 64
-  (1 << CS22) | (0 << CS21) | (1 << CS20), // 128
-  (1 << CS22) | (1 << CS21) | (0 << CS20), // 256
-  (1 << CS22) | (1 << CS21) | (1 << CS20)  // 1024
-};
-
 // http://www.8bit-era.cz/arduino-timer-interrupts-calculator.html
 void initializeInterrupts() {
   cli();                                    // stop interrupts
@@ -543,26 +529,26 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   m_outputDisableMultiplex = LOW;       // Enable Multiplex
 
   irq1Count++;
-  if(irq1Count > 15)
+  if(irq1Count > 23)
     irq1Count = 0;
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
-  // // Update Envelope
-  // for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+  // Update Envelope
+  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
 
-  //   updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
-  //   voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+    // updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
+    // voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
 
-  //   updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
-  //   voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
+    // updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
+    // voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
 
-  //   // updateLfo(&voicess[i]);
-  //   // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
-  // }
+    updateLfo(&voicess[i]);
+    voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+  }
 
   irq2Count++;
-  if(irq2Count > 1146){
+  if(irq2Count > 1146/2){
     irq2Count = 0;
     printVoiceDacValues(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
@@ -604,14 +590,14 @@ void loop() {
   if (Serial.available() > 0) {    // is a character available?
     rx_byte = Serial.read();       // get the character
 
-    // processSerialInput(rx_byte);
+    processSerialInput(rx_byte);
 
-    miby_parse( &m, rx_byte);
-    if ( MIBY_ERROR_MISSING_DATA(&m) )
-    {
-      Serial.println( "*** MISSING DATA ***\n" );
-      MIBY_CLEAR_MISSING_DATA(&m);
-    }
+    // miby_parse( &m, rx_byte);
+    // if ( MIBY_ERROR_MISSING_DATA(&m) )
+    // {
+    //   Serial.println( "*** MISSING DATA ***\n" );
+    //   MIBY_CLEAR_MISSING_DATA(&m);
+    // }
   }
 }
 
@@ -749,7 +735,7 @@ void miby_note_on( miby_this_t midi_state )
   // printf( "Note On :: note = %02X, vel = %02X\n", MIBY_ARG0(midi_state),
   //                                                 MIBY_ARG1(midi_state));
 
-  uint8_t voiceNumber = findVoiceWithNote(MIBY_ARG0(midi_state));
+  uint8_t voiceNumber = findIdleVoice();
   if(voiceNumber == 0xFF)
     return;
   else {
@@ -961,7 +947,7 @@ void processSerialInput(char rx_byte) {
     case 53:
     case 54: {
         selectedVoice = rx_byte - 49;
-        voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, 0, 127) : voiceNoteOn(selectedVoice, 0 , 0);
+        voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, 49, 127) : voiceNoteOn(selectedVoice, 49, 0);
       }
       break;
     case 113: {
