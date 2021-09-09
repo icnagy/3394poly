@@ -11,18 +11,18 @@
 #define NUMBER_OF_PARAMS 8
 
 enum DAC_PARAM {
-  DAC_PARAM_CV,
-  DAC_PARAM_MOD_AMT,
-  DAC_PARAM_WAVE_SELECT,
-  DAC_PARAM_PWM,
-  DAC_PARAM_MIXER,
   DAC_PARAM_CUTOFF,
   DAC_PARAM_RESONANCE,
+  DAC_PARAM_MIXER,
   DAC_PARAM_VCA,
+  DAC_PARAM_PWM,
+  DAC_PARAM_CV,
+  DAC_PARAM_WAVE_SELECT,
+  DAC_PARAM_MOD_AMT,
   DAC_PARAM_LAST
 };
 
-#define CV                    0
+#define CV                    5
 #define CV_GAIN_LOW           3500
 #define CV_GAIN_SWITCH_POINT  3500
 #define CV_GAIN_HIGH          0
@@ -36,7 +36,7 @@ enum DAC_PARAM {
 // 8 Octave => 8 * 12 = 96 notes
 // 8 Octave => 7000 DAC values => 7000 / 96 = 72 DAC values between two consecutive note
 
-#define MOD_AMT           1
+#define MOD_AMT           7
 #define MOD_AMT_GAIN      0
 #define MOD_AMT_MIN_VALUE 0
 #define MOD_AMT_MAX_VALUE 3500
@@ -44,7 +44,7 @@ enum DAC_PARAM {
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
 
-#define WAVE_SELECT             2
+#define WAVE_SELECT             6
 #define WAVE_SELECT_GAIN        1000
 #define WAVE_SELECT_MIN_VALUE   0
 #define WAVE_SELECT_MAX_VALUE   4000
@@ -66,7 +66,7 @@ enum DAC_PARAM {
 // Might be a 4 position switch ?
 // -2 V < SQR > -0.3 (+/-0.15) V < TRI > +1.25 (+/-0.3) V < TRI + SAW > +2.7 (+/-0.5) V < SAW > 4V
 
-#define PWM           3
+#define PWM           4
 #define PWM_GAIN      100
 #define PWM_MIN_VALUE 0
 #define PWM_MAX_VALUE 2000
@@ -74,7 +74,7 @@ enum DAC_PARAM {
 // GAIN: 0    OFFSET: 0        0
 // GAIN: 0    OFFSET: 2000     2.29
 
-#define MIXER            4
+#define MIXER            2
 #define MIXER_GAIN       1500
 #define MIXER_MIN_VALUE  0
 #define MIXER_MAX_VALUE  3000
@@ -84,7 +84,7 @@ enum DAC_PARAM {
 // GAIN: 1500 OFFSET: 1500     0.0  VCA2 -6dB VCA1 -6dB
 // GAIN: 1500 OFFSET: 3000     1.72 VCA2 OFF  VCA1 FULL
 
-#define RESONANCE           5
+#define RESONANCE           1
 #define RESONANCE_GAIN      0
 #define RESONANCE_MIN_VALUE 0
 #define RESONANCE_MAX_VALUE 2000
@@ -92,7 +92,7 @@ enum DAC_PARAM {
 // GAIN: 0    OFFSET: 0        0
 // GAIN: 0    OFFSET: 2000     2.29
 
-#define CUTOFF                6
+#define CUTOFF                0
 #define CUTOFF_GAIN_LOW       2500
 #define CUTOFF_GAIN_THRESHOLD 2500
 #define CUTOFF_GAIN_HIGH      0
@@ -107,7 +107,7 @@ enum DAC_PARAM {
 // GAIN: 0    OFFSET: 3500     4.01    0Hz
 // 6000 DAC values
 
-#define VCA           7
+#define VCA           3
 #define VCA_GAIN      0
 #define VCA_MIN_VALUE 0
 #define VCA_MAX_VALUE 3000
@@ -159,26 +159,6 @@ typedef struct envelope_structure {
   uint16_t release_rate;
 } envelope;
 
-void updatePitch(uint16_t pitch);
-void updateModAmount(uint16_t modAmount);
-void updateWaveSelect(uint16_t waveSelect);
-void updatePwm(uint16_t pwm);
-void updateMixer(uint16_t mixer);
-void updateResonance(uint16_t resonance);
-void updateCutoff(uint16_t cutoff);
-void updateVca(uint16_t vca);
-
-void (*updateVoiceParam[8])(uint16_t) = {
-  updatePitch,
-  updateModAmount,
-  updateWaveSelect,
-  updatePwm,
-  updateMixer,
-  updateResonance,
-  updateCutoff,
-  updateVca
-};
-
 typedef struct voice_structure {
   envelope_structure vca_envelope = {
     ENV_IDLE, // state
@@ -188,17 +168,17 @@ typedef struct voice_structure {
     10,  // attack_rate
     400,  // decay_rate
     2500, // sustain_value
-    5  // release_rate
+    10  // release_rate
   };
   envelope_structure vcf_envelope = {
     ENV_IDLE,
     CUTOFF_MIN_VALUE, // min_value
     CUTOFF_MAX_VALUE, // max_value
     CUTOFF_MIN_VALUE, // value 0 - 6000
-    6000,  // attack_rate
-    1,  // decay_rate
-    6000, // sustain_value
-    6000  // release_rate
+    60,  // attack_rate
+    10,  // decay_rate
+    3500, // sustain_value
+    60  // release_rate
   };
   lfo_structure lfo = {
     LFO_TRI,       // shape
@@ -220,14 +200,14 @@ typedef struct voice_structure {
     0  // LFO to VCA
   };
   uint16_t dacValues[8] = {
-    CV_MAX_VALUE / 2,          //   0..7000,   // Key CV
-    0,         //   0..3500,   // Mod Amount
-    1000,// WAVE_SELECT_TRI,           //   0..4000,   // Wave Select
-    PWM_MIN_VALUE, // PWM_MAX_VALUE / 2,         //   0..2000,   // PWM
-    0, // MIXER_MAX_VALUE / 2,       //   0..3500,   // Mixer Balance
-    0, // RESONANCE_MAX_VALUE / 2,   //   0..2000,   // Resonance
     0, // CUTOFF_MAX_VALUE / 2,         //   0..6000,   // Cutoff
-    VCA_MAX_VALUE - 150, // VCA_MAX_VALUE /2           //   0..3500    // VCA
+    0, // RESONANCE_MAX_VALUE / 2,   //   0..2000,   // Resonance
+    MIXER_MAX_VALUE, // MIXER_MAX_VALUE / 2,       //   0..3500,   // Mixer Balance
+    VCA_MIN_VALUE, // VCA_MAX_VALUE /2           //   0..3500    // VCA
+    PWM_MIN_VALUE, // PWM_MAX_VALUE / 2,         //   0..2000,   // PWM
+    CV_MAX_VALUE / 2,          //   0..7000,   // Key CV
+    1000,// WAVE_SELECT_TRI,           //   0..4000,   // Wave Select
+    0,         //   0..3500,   // Mod Amount
   };
   uint8_t gate;
   uint8_t note;
@@ -247,6 +227,26 @@ typedef struct voice_structure {
 // };
 
 voice voicess[6];
+
+void updatePitch(voice *voice);
+void updateModAmount(voice *voice);
+void updateWaveSelect(voice *voice);
+void updatePwm(voice *voice);
+void updateMixer(voice *voice);
+void updateResonance(voice *voice);
+void updateCutoff(voice *voice);
+void updateVca(voice *voice);
+
+void (*updateVoiceParam[8])(voice *) = {
+  updateCutoff,
+  updateResonance,
+  updateMixer,
+  updateVca,
+  updatePwm,
+  updatePitch,
+  updateWaveSelect,
+  updateModAmount
+};
 
 #define MIBY_SYSEX_BUF_LEN  ( 32 )
 
@@ -521,7 +521,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   m_outputDisableMultiplex = HIGH;      // Disable Multiplex
 
   // Send value to DAC
-  updateVoiceParam[voiceParamNumber](voicess[voiceNumber].dacValues[voiceParamNumber]);
+  updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);
 
   voiceSelectPort.write(voiceNumber);   // Voice Select
   voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
@@ -535,21 +535,31 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   // Update Envelope
-  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+  // for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
 
-    // updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
-    // voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+  //   updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
+  //   voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
 
-    // updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
-    // voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
+  //   updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
+  //   voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
 
-    updateLfo(&voicess[i]);
-    voicess[i].dacValues[PWM] = voicess[i].lfo.value;
-  }
+  //   updateLfo(&voicess[i]);
+  //   voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+  // }
 
   irq2Count++;
   if(irq2Count > 1146/2){
     irq2Count = 0;
+    Serial.print("1/2/3");
+    Serial.print("\tCV: q/a");
+    Serial.print("\tMOD: w/s");
+    Serial.print("\tWAV: e/d");
+    Serial.print("\tPWM: r/f");
+    Serial.print("\tMIX: t/g");
+    Serial.print("\tVCF: y/h");
+    Serial.print("\tRES: u/j");
+    Serial.println("\tVCA: i/k");
+
     printVoiceDacValues(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
     printVoiceDacValues(&voicess[2]);
@@ -558,7 +568,6 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
     printVoiceDacValues(&voicess[5]);
     Serial.println("------------------------------");
   }
-
 }
 
 miby_t m;
@@ -571,7 +580,10 @@ void setup() {
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
-  SPI.setClockDivider(SPI_CLOCK_DIV2);
+  // SPI.setClockDivider(SPI_CLOCK_DIV2); // original
+  SPI.setClockDivider(SPI_CLOCK_DIV4);
+  // SPI.setClockDivider(SPI_CLOCK_DIV32);
+  // SPI.setClockDivider(SPI_CLOCK_DIV64);
 
   Serial.begin(115200);
   Serial.println("Hello world");
@@ -615,12 +627,13 @@ void panic() {
     voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;
     voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;
     voicess[i].dacValues[CUTOFF] =      CUTOFF_ZERO_VALUE;
-    voicess[i].dacValues[VCA] =         VCA_MIN_VALUE; //2500; //
+    voicess[i].dacValues[VCA] =         VCA_MIN_VALUE;
   }
 }
 
-void updatePitch(uint16_t pitch) {
+void updatePitch(voice* voice) {
 
+  uint16_t pitch = voice->dacValues[CV];
   uint16_t gain =
              pitch > CV_GAIN_SWITCH_POINT ? CV_GAIN_HIGH : CV_GAIN_LOW;
   uint16_t offset =
@@ -633,43 +646,50 @@ void updatePitch(uint16_t pitch) {
                             CV_MAX_VALUE >> 1));
 }
 
-void updateModAmount(uint16_t modAmount) {
+void updateModAmount(voice* voice) {
   // Serial.print("|MOD: ");Serial.print(modAmount);
+  uint16_t modAmount = voice->dacValues[MOD_AMT];
+
   updateDAC(MOD_AMT_GAIN, constrain(modAmount,
                                     MOD_AMT_MIN_VALUE,
                                     MOD_AMT_MAX_VALUE));
 }
 
-void updateWaveSelect(uint16_t waveSelect) {
+void updateWaveSelect(voice* voice) {
   // Serial.print("|WS: ");Serial.print(waveSelect);
+  uint16_t waveSelect = voice->dacValues[WAVE_SELECT];
   updateDAC(WAVE_SELECT_GAIN, constrain(waveSelect,
                                         WAVE_SELECT_MIN_VALUE,
                                         WAVE_SELECT_MAX_VALUE));
 }
 
-void updatePwm(uint16_t pwm){
+void updatePwm(voice* voice) {
   // Serial.print("|PWM: ");Serial.print(pwm);
+  uint16_t pwm = voice->dacValues[PWM];
   updateDAC(PWM_GAIN, constrain(pwm,
                                 PWM_MIN_VALUE,
                                 PWM_MAX_VALUE));
 }
 
-void updateMixer(uint16_t mixer) {
+void updateMixer(voice* voice) {
   // Serial.print("|MIX: ");Serial.print(mixer);
+  uint16_t mixer = voice->dacValues[MIXER];
   updateDAC(MIXER_GAIN, constrain(mixer,
                                   MIXER_MIN_VALUE,
                                   MIXER_MAX_VALUE));
 }
 
-void updateResonance(uint16_t resonance) {
+void updateResonance(voice *voice) {
   // Serial.print("|RES: ");Serial.print(resonance);
+  uint16_t resonance = voice->dacValues[RESONANCE];
   updateDAC(RESONANCE_GAIN, constrain(resonance,
                                       RESONANCE_MIN_VALUE,
                                       RESONANCE_MAX_VALUE));
 }
 
-void updateCutoff(uint16_t cutoff) {
+void updateCutoff(voice *voice) {
   // Serial.print("|VCF: ");Serial.print(cutoff);
+  uint16_t cutoff = voice->dacValues[CUTOFF];
   if(cutoff > CUTOFF_GAIN_THRESHOLD) {
     updateDAC(CUTOFF_GAIN_HIGH, constrain((cutoff - CUTOFF_GAIN_THRESHOLD),
                                           CUTOFF_MIN_VALUE,
@@ -681,8 +701,9 @@ void updateCutoff(uint16_t cutoff) {
   }
 }
 
-void updateVca(uint16_t vca) {
+void updateVca(voice *voice) {
   // Serial.print("|VCA: ");Serial.print(vca);
+  uint16_t vca = voice->dacValues[VCA];
   updateDAC(VCA_GAIN, constrain(vca,
                                 VCA_MIN_VALUE,
                                 VCA_MAX_VALUE));
@@ -946,10 +967,12 @@ void processSerialInput(char rx_byte) {
     case 52:
     case 53:
     case 54: {
-        selectedVoice = rx_byte - 49;
-        voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, 49, 127) : voiceNoteOn(selectedVoice, 49, 0);
-      }
-      break;
+      uint8_t note = 49;
+      selectedVoice = rx_byte - 49;
+      note += selectedVoice * 5;
+      voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, note, 127) : voiceNoteOn(selectedVoice, note, 0);
+    }
+    break;
     case 113: {
       if(voicess[selectedVoice].dacValues[CV] + 72 >= CV_MAX_VALUE)
         voicess[selectedVoice].dacValues[CV] = CV_MAX_VALUE;
@@ -1073,11 +1096,22 @@ void processSerialInput(char rx_byte) {
       }
       break;
   }
-  printVoiceDacValues(&voicess[0]);
-  printVoiceDacValues(&voicess[1]);
-  printVoiceDacValues(&voicess[2]);
-  printVoiceDacValues(&voicess[3]);
-  printVoiceDacValues(&voicess[4]);
-  printVoiceDacValues(&voicess[5]);
-  Serial.println("------------------------------");
+
+  // Serial.print("1/2/3");
+  // Serial.print("\tCV: q/a");
+  // Serial.print("\tMOD: w/s");
+  // Serial.print("\tWAV: e/d");
+  // Serial.print("\tPWM: r/f");
+  // Serial.print("\tMIX: t/g");
+  // Serial.print("\tVCF: y/h");
+  // Serial.print("\tRES: u/j");
+  // Serial.println("\tVCA: i/k");
+
+  // printVoiceDacValues(&voicess[0]);
+  // printVoiceDacValues(&voicess[1]);
+  // printVoiceDacValues(&voicess[2]);
+  // printVoiceDacValues(&voicess[3]);
+  // printVoiceDacValues(&voicess[4]);
+  // printVoiceDacValues(&voicess[5]);
+  // Serial.println("------------------------------");
 }
