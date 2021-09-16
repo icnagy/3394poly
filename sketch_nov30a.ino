@@ -386,7 +386,7 @@ void updateEnvelope(envelope_structure *envelope, voice *voice) {
           envelope->state = ENV_DECAY;
         }
       } else {
-        envelope->state = ENV_DECAY;
+        envelope->state = ENV_RELEASE;
       }
       break;
     case ENV_DECAY:
@@ -413,18 +413,21 @@ void updateEnvelope(envelope_structure *envelope, voice *voice) {
       }
       break;
     case ENV_RELEASE:
-      envelope->value -= envelope->release_rate;
-      if(envelope->value < envelope->release_rate){
+      if(envelope->min_value + envelope->release_rate >= envelope->value){
         envelope->value = envelope->min_value;
         envelope->state = ENV_IDLE;
       }
+      else
+        envelope->value -= envelope->release_rate;
       break;
+    default:
+      envelope->value = envelope->min_value;
   }
 }
 
 int findVoiceWithNote(uint8_t note) {
   for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].note == note)
+    if(voicess[i].gate == 1 && voicess[i].note == note)
       return i;
   }
   return -1;
@@ -432,7 +435,7 @@ int findVoiceWithNote(uint8_t note) {
 
 int findIdleVoice() {
   for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].vca_envelope.state == ENV_IDLE)
+    if(voicess[i].gate == 0 && voicess[i].vca_envelope.state == ENV_IDLE)
       return i;
   }
   return -1;
@@ -535,17 +538,17 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   // Update Envelope
-  // for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
 
-  //   updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
-  //   voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+    updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
+    voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
 
-  //   updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
-  //   voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
+    updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
+    voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
 
   //   updateLfo(&voicess[i]);
   //   voicess[i].dacValues[PWM] = voicess[i].lfo.value;
-  // }
+  }
 
   irq2Count++;
   if(irq2Count > 1146/2){
@@ -585,7 +588,8 @@ void setup() {
   // SPI.setClockDivider(SPI_CLOCK_DIV32);
   // SPI.setClockDivider(SPI_CLOCK_DIV64);
 
-  Serial.begin(115200);
+  // Serial.begin(115200);
+  Serial.begin(31250); // MIDI?
   Serial.println("Hello world");
 
   miby_init( &m, NULL );
@@ -602,14 +606,14 @@ void loop() {
   if (Serial.available() > 0) {    // is a character available?
     rx_byte = Serial.read();       // get the character
 
-    processSerialInput(rx_byte);
+    // processSerialInput(rx_byte);
 
-    // miby_parse( &m, rx_byte);
-    // if ( MIBY_ERROR_MISSING_DATA(&m) )
-    // {
-    //   Serial.println( "*** MISSING DATA ***\n" );
-    //   MIBY_CLEAR_MISSING_DATA(&m);
-    // }
+    miby_parse( &m, rx_byte);
+    if ( MIBY_ERROR_MISSING_DATA(&m) )
+    {
+      Serial.println( "*** MISSING DATA ***\n" );
+      MIBY_CLEAR_MISSING_DATA(&m);
+    }
   }
 }
 
@@ -748,21 +752,32 @@ void updateDAC(uint16_t gain, uint16_t offset) {
 /*****************************************************************************/
 void miby_note_on( miby_this_t midi_state )
 {
-  Serial.print(MIBY_STATUSBYTE(midi_state));
-  Serial.print(MIBY_ARG0(midi_state));
-  Serial.println(MIBY_ARG1(midi_state));
-
   // printf( "<Ch.%d> ", MIBY_CHAN(midi_state));
   // printf( "Note On :: note = %02X, vel = %02X\n", MIBY_ARG0(midi_state),
   //                                                 MIBY_ARG1(midi_state));
-
-  uint8_t voiceNumber = findIdleVoice();
-  if(voiceNumber == 0xFF)
-    return;
+  if(MIBY_ARG1(midi_state) == 0) {
+    miby_note_off(midi_state);
+  }
   else {
-    voiceNoteOn(voiceNumber,
-                MIBY_ARG0(midi_state),
-                MIBY_ARG1(midi_state));
+    uint8_t voiceNumber = 0xFF;
+    voiceNumber = findIdleVoice();
+
+    Serial.print( "<Ch.");
+    Serial.print(MIBY_CHAN(midi_state));
+    Serial.print( "> Note On :: note = ");
+    Serial.print(MIBY_ARG0(midi_state));
+    Serial.print(", vel = ");
+    Serial.print(MIBY_ARG1(midi_state));
+    Serial.print(", voice = ");
+    Serial.println(voiceNumber);
+
+    if(voiceNumber == 0xFF)
+      return;
+    else {
+      voiceNoteOn(voiceNumber,
+                  MIBY_ARG0(midi_state),
+                  MIBY_ARG1(midi_state));
+    }
   }
 }
 
@@ -771,15 +786,20 @@ void miby_note_on( miby_this_t midi_state )
 /*****************************************************************************/
 void miby_note_off( miby_this_t midi_state )
 {
-  Serial.print(MIBY_STATUSBYTE(midi_state));
-  Serial.print(MIBY_ARG0(midi_state));
-  Serial.println(MIBY_ARG1(midi_state));
-
   // printf( "<Ch.%d> ", MIBY_CHAN(midi_state) );
   // printf( "Note Off :: note = %02X, vel = %02X\n", MIBY_ARG0(midi_state),
   //                                                  MIBY_ARG1(midi_state) );
-
   uint8_t voiceNumber = findVoiceWithNote(MIBY_ARG0(midi_state));
+
+  Serial.print( "<Ch.");
+  Serial.print(MIBY_CHAN(midi_state));
+  Serial.print( "> Note Off :: note = ");
+  Serial.print(MIBY_ARG0(midi_state));
+  Serial.print(", vel = ");
+  Serial.print(MIBY_ARG1(midi_state));
+  Serial.print(", voice = ");
+  Serial.println(voiceNumber);
+
   if(voiceNumber == 0xFF)
     return;
   else {
@@ -795,8 +815,7 @@ void miby_note_off( miby_this_t midi_state )
 /*****************************************************************************/
 void miby_rt_system_reset( miby_this_t sss )
 {
-  // printf( NEWTAB "[FF] " );
-  // printf( "SysRT: system reset\n" );
+  Serial.println("[FF] SysRT: system reset" );
   panic();
 }
 
@@ -805,8 +824,7 @@ void miby_rt_system_reset( miby_this_t sss )
 /*****************************************************************************/
 void test_rt_timing_clock( miby_this_t sss )
 {
-  printf( NEWTAB "[F8] " );
-  printf( "SysRT: timing clock\n" );
+  Serial.println("[F8] SysRT: timing clock" );
 }
 
 /*****************************************************************************/
@@ -814,8 +832,7 @@ void test_rt_timing_clock( miby_this_t sss )
 /*****************************************************************************/
 void test_rt_start( miby_this_t sss )
 {
-  printf( NEWTAB "[FA] " );
-  printf( "SysRT: start\n" );
+  Serial.println("[FA] SysRT: start" );
 }
 
 /*****************************************************************************/
@@ -823,8 +840,7 @@ void test_rt_start( miby_this_t sss )
 /*****************************************************************************/
 void test_rt_continue( miby_this_t sss )
 {
-  printf( NEWTAB "[FB] " );
-  printf( "SysRT: continue\n" );
+  Serial.println("[FB] SysRT: continue" );
 }
 
 /*****************************************************************************/
@@ -832,8 +848,7 @@ void test_rt_continue( miby_this_t sss )
 /*****************************************************************************/
 void test_rt_stop( miby_this_t sss )
 {
-  printf( NEWTAB "[FC] " );
-  printf( "SysRT: stop\n" );
+  Serial.println("[FC] SysRT: stop" );
 }
 
 /*****************************************************************************/
@@ -896,9 +911,12 @@ void test_poly_at( miby_this_t sss )
 /*****************************************************************************/
 void test_cc( miby_this_t sss )
 {
-  printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-  printf( "<Ch.%d> ", MIBY_CHAN(sss) );
-  printf( "Ctrl Change :: control # = %02X, value = %02X\n", MIBY_ARG0(sss), MIBY_ARG1(sss) );
+  Serial.print( "<Ch.");
+  Serial.print(MIBY_CHAN(sss));
+  Serial.print( "> Ctrl Change :: control # = ");
+  Serial.print( MIBY_ARG0(sss));
+  Serial.print( ", value = ");
+  Serial.println(MIBY_ARG1(sss));
 }
 
 /*****************************************************************************/
@@ -926,11 +944,10 @@ void test_chanat( miby_this_t sss )
 /*****************************************************************************/
 void test_pb( miby_this_t sss )
 {
-  printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-  printf( "<Ch.%d> ", MIBY_CHAN(sss) );
-  printf( "Pitchbend :: lsb = %02X, msb = %02X (%04X)\n",
-          MIBY_ARG0(sss), MIBY_ARG1(sss),
-          ( MIBY_ARG1(sss) << 7 ) + MIBY_ARG0(sss) );
+  // printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
+  Serial.print( "<Ch."); Serial.print(MIBY_CHAN(sss));
+  Serial.print( "> Pitchbend :: ");
+  Serial.println(( MIBY_ARG1(sss) << 7 ) + MIBY_ARG0(sss) );
 }
 
 /*****************************************************************************/
@@ -1106,12 +1123,4 @@ void processSerialInput(char rx_byte) {
   // Serial.print("\tVCF: y/h");
   // Serial.print("\tRES: u/j");
   // Serial.println("\tVCA: i/k");
-
-  // printVoiceDacValues(&voicess[0]);
-  // printVoiceDacValues(&voicess[1]);
-  // printVoiceDacValues(&voicess[2]);
-  // printVoiceDacValues(&voicess[3]);
-  // printVoiceDacValues(&voicess[4]);
-  // printVoiceDacValues(&voicess[5]);
-  // Serial.println("------------------------------");
 }
