@@ -22,27 +22,67 @@ enum DAC_PARAM {
   DAC_PARAM_LAST
 };
 
+#define CUTOFF                0
+#define CUTOFF_GAIN_LOW       2500
+#define CUTOFF_GAIN_THRESHOLD 2500
+#define CUTOFF_GAIN_HIGH      0
+#define CUTOFF_MIN_VALUE      0
+#define CUTOFF_MAX_VALUE      6000
+#define CUTOFF_ZERO_VALUE     2500
+// -3 .. +4 V
+// 3/8V per octave
+// GAIN: 2500 OFFSET: 0       -2.83  24kHz
+// GAIN: 2500 OFFSET: 2500     0.0 ~1300Hz cutoff point
+// GAIN: 0    OFFSET: 0        0.0
+// GAIN: 0    OFFSET: 3500     4.01    0Hz
+// 6000 DAC values
+
+#define RESONANCE           1
+#define RESONANCE_GAIN      0
+#define RESONANCE_MIN_VALUE 0
+#define RESONANCE_MAX_VALUE 2000
+// 0 .. +2.5 V
+// GAIN: 0    OFFSET: 0        0
+// GAIN: 0    OFFSET: 2000     2.29
+
+#define MIXER            2
+#define MIXER_GAIN       1500
+#define MIXER_MIN_VALUE  0
+#define MIXER_MAX_VALUE  3000
+#define MIXER_ZERO_VALUE 1500
+// -2 .. 2 V
+// GAIN: 1500 OFFSET: 0       -1.68 VCA2 FULL VCA1 OFF
+// GAIN: 1500 OFFSET: 1500     0.0  VCA2 -6dB VCA1 -6dB
+// GAIN: 1500 OFFSET: 3000     1.72 VCA2 OFF  VCA1 FULL
+
+#define VCA           3
+#define VCA_GAIN      0
+#define VCA_MIN_VALUE 0
+#define VCA_MAX_VALUE 3500
+// 0 .. +4.3 V
+//GAIN: 0    OFFSET: 0        0
+//GAIN: 0    OFFSET: 3500     4.01
+
+#define PWM           4
+#define PWM_GAIN      100
+#define PWM_MIN_VALUE 0
+#define PWM_MAX_VALUE 2000
+// 0 .. +2.2 V
+// GAIN: 0    OFFSET: 0        0
+// GAIN: 0    OFFSET: 2000     2.29
+
 #define CV                    5
 #define CV_GAIN_LOW           3500
 #define CV_GAIN_SWITCH_POINT  3500
 #define CV_GAIN_HIGH          0
 #define CV_MIN_VALUE          0
 #define CV_MAX_VALUE          7000
-
 // -4 .. +4 V
 // GAIN: 3500 OFFSET: 0       -3.96
 // GAIN: 3500 OFFSET: 3500     0.0
 // GAIN: 0    OFFSET: 3500     4.01
 // 8 Octave => 8 * 12 = 96 notes
 // 8 Octave => 7000 DAC values => 7000 / 96 = 72 DAC values between two consecutive note
-
-#define MOD_AMT           7
-#define MOD_AMT_GAIN      0
-#define MOD_AMT_MIN_VALUE 0
-#define MOD_AMT_MAX_VALUE 3500
-// 0 .. +4 V
-//GAIN: 0    OFFSET: 0        0
-//GAIN: 0    OFFSET: 3500     4.01
 
 #define WAVE_SELECT             6
 #define WAVE_SELECT_GAIN        1000
@@ -66,52 +106,11 @@ enum DAC_PARAM {
 // Might be a 4 position switch ?
 // -2 V < SQR > -0.3 (+/-0.15) V < TRI > +1.25 (+/-0.3) V < TRI + SAW > +2.7 (+/-0.5) V < SAW > 4V
 
-#define PWM           4
-#define PWM_GAIN      100
-#define PWM_MIN_VALUE 0
-#define PWM_MAX_VALUE 2000
-// 0 .. +2.2 V
-// GAIN: 0    OFFSET: 0        0
-// GAIN: 0    OFFSET: 2000     2.29
-
-#define MIXER            2
-#define MIXER_GAIN       1500
-#define MIXER_MIN_VALUE  0
-#define MIXER_MAX_VALUE  3000
-#define MIXER_ZERO_VALUE 1500
-// -2 .. 2 V
-// GAIN: 1500 OFFSET: 0       -1.68 VCA2 FULL VCA1 OFF
-// GAIN: 1500 OFFSET: 1500     0.0  VCA2 -6dB VCA1 -6dB
-// GAIN: 1500 OFFSET: 3000     1.72 VCA2 OFF  VCA1 FULL
-
-#define RESONANCE           1
-#define RESONANCE_GAIN      0
-#define RESONANCE_MIN_VALUE 0
-#define RESONANCE_MAX_VALUE 2000
-// 0 .. +2.5 V
-// GAIN: 0    OFFSET: 0        0
-// GAIN: 0    OFFSET: 2000     2.29
-
-#define CUTOFF                0
-#define CUTOFF_GAIN_LOW       2500
-#define CUTOFF_GAIN_THRESHOLD 2500
-#define CUTOFF_GAIN_HIGH      0
-#define CUTOFF_MIN_VALUE      0
-#define CUTOFF_MAX_VALUE      6000
-#define CUTOFF_ZERO_VALUE     2500
-// -3 .. +4 V
-// 3/8V per octave
-// GAIN: 2500 OFFSET: 0       -2.83  24kHz
-// GAIN: 2500 OFFSET: 2500     0.0 ~1300Hz cutoff point
-// GAIN: 0    OFFSET: 0        0.0
-// GAIN: 0    OFFSET: 3500     4.01    0Hz
-// 6000 DAC values
-
-#define VCA           3
-#define VCA_GAIN      0
-#define VCA_MIN_VALUE 0
-#define VCA_MAX_VALUE 3000
-// 0 .. +4.3 V
+#define MOD_AMT           7
+#define MOD_AMT_GAIN      0
+#define MOD_AMT_MIN_VALUE 0
+#define MOD_AMT_MAX_VALUE 3500
+// 0 .. +4 V
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
 
@@ -159,7 +158,33 @@ typedef struct envelope_structure {
   uint16_t release_rate;
 } envelope;
 
+envelope_structure vca_envelope = {
+  ENV_IDLE, // state
+  VCA_MIN_VALUE, // min_value
+  VCA_MAX_VALUE, // max_value
+  VCA_MIN_VALUE, // value 0 - 3500
+  10,  // attack_rate
+  400,  // decay_rate
+  2500, // sustain_value
+  10  // release_rate
+};
+
+envelope_structure vcf_envelope = {
+  ENV_IDLE,
+  CUTOFF_MIN_VALUE, // min_value
+  CUTOFF_MAX_VALUE, // max_value
+  CUTOFF_MIN_VALUE, // value 0 - 6000
+  60,  // attack_rate
+  10,  // decay_rate
+  3500, // sustain_value
+  60  // release_rate
+};
+
 typedef struct voice_structure {
+  uint8_t vca_envelope_state;
+  uint16_t vca_envelope_value;
+  uint8_t vcf_envelope_state;
+  uint16_t vcf_envelope_value;
   envelope_structure vca_envelope = {
     ENV_IDLE, // state
     VCA_MIN_VALUE, // min_value
@@ -189,16 +214,16 @@ typedef struct voice_structure {
     LFO_MIN_VALUE, // accumulator
     LFO_MIN_VALUE  // value
   };
-  uint16_t lfoModAmount[8] {
-    0, // LFO to PITCH
-    0, // LFO to MOD_AMT
-    0, // LFO to WAVE SELECT
-    0, // LFO to PWM
-    0, // LFO to MIXER
-    0, // LFO to RESONANCE
-    0, // LFO to VCF
-    0  // LFO to VCA
-  };
+  // uint16_t lfoModAmount[8] {
+  //   0, // LFO to PITCH
+  //   0, // LFO to MOD_AMT
+  //   0, // LFO to WAVE SELECT
+  //   0, // LFO to PWM
+  //   0, // LFO to MIXER
+  //   0, // LFO to RESONANCE
+  //   0, // LFO to VCF
+  //   0  // LFO to VCA
+  // };
   uint16_t dacValues[8] = {
     0, // CUTOFF_MAX_VALUE / 2,         //   0..6000,   // Cutoff
     0, // RESONANCE_MAX_VALUE / 2,   //   0..2000,   // Resonance
@@ -248,37 +273,198 @@ void (*updateVoiceParam[8])(voice *) = {
   updateModAmount
 };
 
+// (0..128).map { |x| Math.exp(x/14.713).to_i }
+uint16_t exp_vcf_lookup[128] = {
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5,
+  6, 6, 7, 7, 8, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24,
+  26, 27, 29, 32, 34, 36, 39, 42, 44, 48, 51, 55, 59, 63, 67, 72, 77, 82, 88, 94,
+  101, 108, 116, 124, 133, 142, 152, 163, 175, 187, 200, 214, 229, 246, 263, 281,
+  301, 322, 345, 369, 395, 423, 453, 485, 519, 556, 595, 637, 681, 729, 781, 836,
+  894, 957, 1025, 1097, 1174, 1257, 1345, 1440, 1541, 1649, 1765, 1890, 2022,
+  2165, 2317, 2480, 2654, 2841, 3041, 3255, 3484, 3729, 3991, 4272, 4572, 4894,
+  5238, 5607, 6000
+};
+
+// (0..128).map { |x| Math.exp(x/15.685).to_i }
+uint16_t exp_vca_lookup[128] = {
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5,
+  5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17, 18, 20, 21,
+  22, 24, 25, 27, 29, 31, 33, 35, 37, 40, 43, 45, 48, 52, 55, 59, 63, 67, 71, 76,
+  81, 86, 92, 98, 105, 111, 119, 127, 135, 144, 153, 164, 174, 186, 198, 211,
+  225, 240, 256, 273, 291, 310, 330, 352, 375, 400, 426, 455, 485, 516, 551,
+  587, 625, 667, 711, 757, 807, 860, 917, 978, 1042, 1111, 1184, 1262, 1345,
+  1433, 1528, 1628, 1736, 1850, 1972, 2101, 2240, 2387, 2545, 2712, 2891, 3081,
+  3284, 3500
+};
+
+// Values to map from CC
+uint8_t controlValues[32];
+
+  // // VCO frequency
+  uint8_t coarse;           // CC 2
+                            // octave (72 x 12) = 864
+                            // (72*12) - (7*127) = -25 (to be corrected by fine)
+                            // DAC value += coarse << 3 - coarse
+
+  uint8_t fine;             // CC 3
+                            // 0-63 => +/-32
+                            // DAC value += (fine >> 1)
+
+  uint8_t glide;            // CC 4
+
+  uint8_t lfoToVco;         // CC 5
+
+  uint8_t envToVco;         // CC 6
+                            // -/+ ?
+
+  //wave shape
+  uint8_t waveshape;        // CC 7
+                            // 0..127 mapped to 0..4000 => 4000/127 = 31.xxx
+                            // DAC value = waveshape << 5
+
+  uint8_t pwm;              // CC 8
+                            // 0..127 mapped to 0..2000 => 2000/127 = 15.xxx
+                            // DAC value += pwm << 4
+
+  uint8_t lfoToPwm;         // CC 9
+
+  uint8_t envToPwm;         // CC 10
+                            // -/+ ?
+  // mixer
+  uint8_t noise;            // CC 11
+                            // 0..127 mapped to 0..3000 => 3000/127 = 23.6 ~ 16
+                            // DAC value = 500 + (noise << 4)
+
+  uint8_t lfoToMixer;       // CC 12
+
+  uint8_t envToMixer;       // CC 13
+                            // -/+ ?
+
+  // filter
+  uint8_t cutoff;           // CC 14
+                            // 0..127 mapped to 0..6000 => 6000/127 = 47.x
+                            // 32*127+16*127 - 127 = 5969
+                            // DAC value = (cutoff << 5) + (cutoff << 4) - cutoff;
+
+  uint8_t resonance;        // CC 15
+                            // 0..127 mapped to 0..2000 => 2000/127 = 15.xxx
+                            // DAC value = resonance << 4
+
+  uint8_t filterAttack;     // CC 16
+                            // 0..127 mapped to 6000..1 exponentially
+                            // vcf_envelope.attack_rate = exp_vcf_lookup[127 - filterAttack]
+
+  uint8_t filterDecay;      // CC 17
+                            // 0..127 mapped to ?..1
+                            // vcf_envelope.decay_rate = exp_vcf_lookup[127 - filterDecay]
+
+  uint8_t filterSustain;    // CC 18
+                            // 0..127 mapped to 6000..1 linear (cutoff is inverted)
+                            // vcf_envelope.sustain_value = CUTOFF_MAX_VALUE - ((filterSustain << 5) + (filterSustain << 4) - filterSustain);
+
+  uint8_t filterRelease;    // CC 19
+                            // 0..127 mapped to 6000..1
+                            // vcf_envelope.release_rate = exp_vcf_lookup[127 - filterDecay]
+
+  uint8_t modAmount;        // CC 20
+                            // 0..127 mapped to 0..3500 => 3500/127 = 27.5 = 16+8+2+1
+                            // 16*127+8*127+2*127+127 = 3429
+                            // DAC value = (modAmount << 4) + (modAmount << 3) + (modAmount << 1) + modAmount
+
+  uint8_t keyboardTrack;    // CC 21
+                            // amount or [off/half/full/reversed]?
+                            // needs a table?
+                            // convert cutoff scale to 8 octave
+                            // cutoff = cutoff + lfo +/- env + note
+
+  uint8_t lfoToCutoff;      // CC 22
+  uint8_t envToCutoff;      // CC 23
+
+  // VCA
+  uint8_t ampAttack;        // CC 24
+                            // 0..127 mapped to 3500..1 exponentially
+                            // vca_envelope.attack_rate = exp_vca_lookup[127 - ampAttack]
+
+  uint8_t ampDecay;         // CC 25
+                            // 0..127 mapped to 3500..1 exponentially
+                            // vca_envelope.decay_rate = exp_vca_lookup[127 - ampDecay]
+
+  uint8_t ampSustain;       // CC 26
+                            // 0..127 mapped to 1..3500 (see modAmount)
+                            // vca_envelope.sustain_value = (ampSustain << 4) + (ampSustain << 3) + (ampSustain << 1) + ampSustain
+
+  uint8_t ampRelease;       // CC 27
+                            // 0..127 mapped to 1..3500 exponentially
+                            // vca_envelope.release_rate = exp_vca_lookup[127 - ampRelease]
+
+  uint8_t lfoToVca;         // CC 28
+  uint8_t envToVca;         // CC 29
+                            // -/+ ?
+
+#define CC_MODWHEEL         0
+#define CC_COARSE           1
+#define CC_FINE             2
+#define CC_GLIDE_            3
+#define CC_LFOTOVCO_         4
+#define CC_ENVTOVCO_         5
+#define CC_WAVESHAPE        6
+#define CC_PWM              7
+#define CC_LFOTOPWM_         8
+#define CC_ENVTOPWM_         9
+#define CC_NOISE            10
+#define CC_LFOTOMIXER_       11
+#define CC_ENVTOMIXER_       12
+#define CC_CUTOFF           13
+#define CC_RESONANCE        14
+#define CC_FILTERATTACK     15
+#define CC_FILTERDECAY      16
+#define CC_FILTERSUSTAIN    17
+#define CC_FILTERRELEASE    18
+#define CC_MODAMOUNT        19
+#define CC_KEYBOARDTRACK_    20
+#define CC_LFOTOCUTOFF_      21
+#define CC_ENVTOCUTOFF_      22
+#define CC_AMPATTACK        23
+#define CC_AMPDECAY         24
+#define CC_AMPSUSTAIN       25
+#define CC_AMPRELEASE       26
+#define CC_LFOTOVCA_         27
+#define CC_ENVTOVCA_         28
+#define CC_RESERVED_1_       29
+#define CC_RESERVED_2_       30
+#define CC_RESERVED_3_       31
+
 #define MIBY_SYSEX_BUF_LEN  ( 32 )
 
-extern void test_rt_timing_clock( miby_this_t );
-#define MIBY_HND_RT_CLOCK test_rt_timing_clock
+// extern void test_rt_timing_clock( miby_this_t );
+#define MIBY_HND_RT_CLOCK NULL // test_rt_timing_clock
 
-extern void test_rt_start( miby_this_t );
-#define MIBY_HND_RT_START test_rt_start
+// extern void test_rt_start( miby_this_t );
+#define MIBY_HND_RT_START NULL // test_rt_start
 
-extern void test_rt_continue( miby_this_t );
-#define MIBY_HND_RT_CONTINUE  test_rt_continue
+// extern void test_rt_continue( miby_this_t );
+#define MIBY_HND_RT_CONTINUE NULL //  test_rt_continue
 
-extern void test_rt_stop( miby_this_t );
-#define MIBY_HND_RT_STOP  test_rt_stop
+// extern void test_rt_stop( miby_this_t );
+#define MIBY_HND_RT_STOP NULL // test_rt_stop
 
-extern void test_rt_active_sense( miby_this_t );
-#define MIBY_HND_RT_ACT_SENSE test_rt_active_sense
+// extern void test_rt_active_sense( miby_this_t );
+#define MIBY_HND_RT_ACT_SENSE NULL // test_rt_active_sense
 
-extern void miby_rt_system_reset( miby_this_t );
-#define MIBY_HND_RT_SYS_RESET miby_rt_system_reset
+// extern void miby_rt_system_reset( miby_this_t );
+#define MIBY_HND_RT_SYS_RESET NULL // miby_rt_system_reset
 
-extern void test_tunereq( miby_this_t );
-#define MIBY_HND_SYS_TIMEREQ  test_tunereq
+// extern void test_tunereq( miby_this_t );
+#define MIBY_HND_SYS_TIMEREQ  NULL // test_tunereq
 
-extern void test_mtc( miby_this_t );
-#define MIBY_HND_SYS_MTC  test_mtc
+// extern void test_mtc( miby_this_t );
+#define MIBY_HND_SYS_MTC NULL // test_mtc
 
-extern void test_songpos( miby_this_t );
-#define MIBY_HND_SYS_SONGPOS  test_songpos
+// extern void test_songpos( miby_this_t );
+#define MIBY_HND_SYS_SONGPOS NULL // test_songpos
 
-extern void test_songsel( miby_this_t );
-#define MIBY_HND_SYS_SONGSEL  test_songsel
+// extern void test_songsel( miby_this_t );
+#define MIBY_HND_SYS_SONGSEL NULL // test_songsel
 
 extern void test_sysex( miby_this_t );
 #define MIBY_HND_SYS_EX   test_sysex
@@ -305,7 +491,13 @@ extern void test_chanat( miby_this_t );
 #define MIBY_HND_CHAN_AT  test_chanat
 
 void printVoiceDacValues(voice *voice) {
-  Serial.print("Gate: ");Serial.print(voice->gate);
+  Serial.print("Gate: ");
+  Serial.print(voice->gate);
+  // Serial.print("|");
+  // Serial.print(voice->vca_envelope.state);
+  // Serial.print("|");
+  // Serial.print(voice->vca_envelope.value);
+  // Serial.print("][");
   Serial.print(" CV: ");Serial.print(voice->dacValues[CV]);
   Serial.print("\tMOD: ");Serial.print(voice->dacValues[MOD_AMT]);
   Serial.print("\tWAV: ");Serial.print(voice->dacValues[WAVE_SELECT]);
@@ -441,14 +633,17 @@ int findIdleVoice() {
   return -1;
 }
 
+#define INVERTED_NOTE_TO_CV_VALUE(note) CV_MAX_VALUE - ((controlValues[CC_COARSE] << 3 - controlValues[CC_COARSE]) + controlValues[CC_FINE] + (72 * note))
+
 void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].gate = 1;
   voicess[voiceNo].note = note;
-  voicess[voiceNo].dacValues[CV] = constrain(72 * note, CV_MIN_VALUE, CV_MAX_VALUE);
+  voicess[voiceNo].dacValues[CV] = constrain(INVERTED_NOTE_TO_CV_VALUE(note), CV_MIN_VALUE, CV_MAX_VALUE);
   voicess[voiceNo].velocity = velocity;
   voicess[voiceNo].vca_envelope.state = ENV_ATTACK;
   voicess[voiceNo].vcf_envelope.state = ENV_ATTACK;
 }
+
 void voiceNoteOff(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].gate = 0;
   voicess[voiceNo].note = note;
@@ -482,11 +677,25 @@ void initializeInterrupts() {
   cli();                                    // stop interrupts
 
   // TIMER 1 for interrupt frequency 1142.0413990007137 Hz:
+  // TCCR1A = 0; // set entire TCCR1A register to 0
+  // TCCR1B = 0; // same for TCCR1B
+  // TCNT1  = 0; // initialize counter value to 0
+  // // set compare match register for 1142.0413990007137 Hz increments
+  // OCR1A = 14009; // = 16000000 / (1 * 1142.0413990007137) - 1 (must be <65536)
+  // // turn on CTC mode
+  // TCCR1B |= (1 << WGM12);
+  // // Set CS12, CS11 and CS10 bits for 1 prescaler
+  // TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
+  // // enable timer compare interrupt
+  // TIMSK1 |= (1 << OCIE1A);
+
+  // // 6857 Hz = (1/(7/1000)) * 6 * 8
+  // TIMER 1 for interrupt frequency 6858.122588941277 Hz:
   TCCR1A = 0; // set entire TCCR1A register to 0
   TCCR1B = 0; // same for TCCR1B
   TCNT1  = 0; // initialize counter value to 0
-  // set compare match register for 1142.0413990007137 Hz increments
-  OCR1A = 14009; // = 16000000 / (1 * 1142.0413990007137) - 1 (must be <65536)
+  // set compare match register for 6858.122588941277 Hz increments
+  OCR1A = 2332; // = 16000000 / (1 * 6858.122588941277) - 1 (must be <65536)
   // turn on CTC mode
   TCCR1B |= (1 << WGM12);
   // Set CS12, CS11 and CS10 bits for 1 prescaler
@@ -519,63 +728,73 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   uint8_t voiceParamNumber = 0;
 
   voiceNumber = irq1Count >> 3;         // 0..5 => 0b000xxx ... 0b101xxx
-  voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
 
-  m_outputDisableMultiplex = HIGH;      // Disable Multiplex
+  if(voicess[voiceNumber].vca_envelope.state != ENV_IDLE) {
+    voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
 
-  // Send value to DAC
-  updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);
+    m_outputDisableMultiplex = HIGH;      // Disable Multiplex
 
-  voiceSelectPort.write(voiceNumber);   // Voice Select
-  voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
+    // Send value to DAC
+    updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);
 
-  m_outputDisableMultiplex = LOW;       // Enable Multiplex
+    voiceSelectPort.write(voiceNumber);   // Voice Select
+    voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
 
+    m_outputDisableMultiplex = LOW;       // Enable Multiplex
+  }
   irq1Count++;
-  if(irq1Count > 23)
+  if(irq1Count > 47)
     irq1Count = 0;
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   // Update Envelope
   for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+    // if(continuous_controller_changed) {}
+    voicess[i].vcf_envelope.attack_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERATTACK]];
+    voicess[i].vcf_envelope.decay_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERDECAY]];
+    voicess[i].vcf_envelope.sustain_value = (controlValues[CC_FILTERSUSTAIN] << 5) + (controlValues[CC_FILTERSUSTAIN] << 4) - controlValues[CC_FILTERSUSTAIN];
+    voicess[i].vcf_envelope.release_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERRELEASE]];
+
+    voicess[i].vca_envelope.attack_rate = exp_vca_lookup[127 - controlValues[CC_AMPATTACK]];
+    voicess[i].vca_envelope.decay_rate = exp_vca_lookup[127 - controlValues[CC_AMPDECAY]];
+    voicess[i].vca_envelope.sustain_value = (controlValues[CC_AMPSUSTAIN] << 4) + (controlValues[CC_AMPSUSTAIN] << 3) + (controlValues[CC_AMPSUSTAIN] << 1) + controlValues[CC_AMPSUSTAIN];
+    voicess[i].vca_envelope.release_rate = exp_vca_lookup[127 - controlValues[CC_AMPRELEASE]];
 
     updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
-    voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
-
     updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
-    voicess[i].dacValues[CUTOFF] = (CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value);
 
   //   updateLfo(&voicess[i]);
   //   voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+
+    voicess[i].dacValues[WAVE_SELECT] = controlValues[CC_WAVESHAPE] << 5;
+    voicess[i].dacValues[PWM] = controlValues[CC_PWM] << 4;
+    voicess[i].dacValues[MIXER] = 500 + (controlValues[CC_NOISE] << 4);
+    voicess[i].dacValues[CUTOFF] = CUTOFF_MAX_VALUE - ((controlValues[CC_CUTOFF] << 5) + (controlValues[CC_CUTOFF] << 4) - controlValues[CC_CUTOFF] + voicess[i].vcf_envelope.value);
+    voicess[i].dacValues[RESONANCE] = (controlValues[CC_RESONANCE] << 4);
+    voicess[i].dacValues[MOD_AMT] = (controlValues[CC_MODAMOUNT] << 4) + (controlValues[CC_MODAMOUNT] << 3) + (controlValues[CC_MODAMOUNT] << 1) + controlValues[CC_MODAMOUNT];
+
+    voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
   }
 
-  irq2Count++;
-  if(irq2Count > 1146/2){
-    irq2Count = 0;
-    Serial.print("1/2/3");
-    Serial.print("\tCV: q/a");
-    Serial.print("\tMOD: w/s");
-    Serial.print("\tWAV: e/d");
-    Serial.print("\tPWM: r/f");
-    Serial.print("\tMIX: t/g");
-    Serial.print("\tVCF: y/h");
-    Serial.print("\tRES: u/j");
-    Serial.println("\tVCA: i/k");
+  // irq2Count++;
+  // if(irq2Count > 1146/2){
+  //   irq2Count = 0;
+  // }
 
-    printVoiceDacValues(&voicess[0]);
-    printVoiceDacValues(&voicess[1]);
-    printVoiceDacValues(&voicess[2]);
-    printVoiceDacValues(&voicess[3]);
-    printVoiceDacValues(&voicess[4]);
-    printVoiceDacValues(&voicess[5]);
-    Serial.println("------------------------------");
-  }
 }
+
+/*****************************************************************************/
+/** Realtime Active Sense                                                   **/
+/*****************************************************************************/
+
+uint32_t previousLastMessageReceived = 0;
+uint32_t lastMessageReceived = 0;
 
 miby_t m;
 
 void setup() {
+  cli();                                    // stop interrupts
 
   m_outputChipSelectDAC = LOW;     // Disable DAC (~CS)
   m_outputDisableMultiplex = HIGH; // Disable Multiplex
@@ -583,14 +802,11 @@ void setup() {
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
   SPI.setDataMode(SPI_MODE0);
-  // SPI.setClockDivider(SPI_CLOCK_DIV2); // original
-  SPI.setClockDivider(SPI_CLOCK_DIV4);
-  // SPI.setClockDivider(SPI_CLOCK_DIV32);
-  // SPI.setClockDivider(SPI_CLOCK_DIV64);
+  SPI.setClockDivider(SPI_CLOCK_DIV2); // original
 
   // Serial.begin(115200);
   Serial.begin(31250); // MIDI?
-  Serial.println("Hello world");
+  // Serial.println("Hello world");
 
   miby_init( &m, NULL );
 
@@ -603,18 +819,30 @@ char rx_byte = 0;
 uint8_t selectedVoice = 0;
 
 void loop() {
-  if (Serial.available() > 0) {    // is a character available?
-    rx_byte = Serial.read();       // get the character
+  if (Serial.available() > 0) {    // Midi input available?
+    rx_byte = Serial.read();       // get midi input
 
-    // processSerialInput(rx_byte);
+    // Serial.print(rx_byte);
+    processSerialInput(rx_byte);
 
-    miby_parse( &m, rx_byte);
-    if ( MIBY_ERROR_MISSING_DATA(&m) )
-    {
-      Serial.println( "*** MISSING DATA ***\n" );
-      MIBY_CLEAR_MISSING_DATA(&m);
-    }
+    // miby_parse( &m, rx_byte);
+    // if ( MIBY_ERROR_MISSING_DATA(&m) )
+    // {
+    //   Serial.println( "*** MISSING DATA ***\n" );
+    //   MIBY_CLEAR_MISSING_DATA(&m);
+    // }
+    // lastMessageReceived = millis();
   }
+  // if(millis() - lastMessageReceived > 1000) {
+  //   lastMessageReceived = millis();
+  //   printVoiceDacValues(&voicess[0]);
+  //   printVoiceDacValues(&voicess[1]);
+  //   printVoiceDacValues(&voicess[2]);
+  //   printVoiceDacValues(&voicess[3]);
+  //   printVoiceDacValues(&voicess[4]);
+  //   printVoiceDacValues(&voicess[5]);
+  //   Serial.println("------------------------------");
+  // }
 }
 
 void panic() {
@@ -762,14 +990,14 @@ void miby_note_on( miby_this_t midi_state )
     uint8_t voiceNumber = 0xFF;
     voiceNumber = findIdleVoice();
 
-    Serial.print( "<Ch.");
-    Serial.print(MIBY_CHAN(midi_state));
-    Serial.print( "> Note On :: note = ");
-    Serial.print(MIBY_ARG0(midi_state));
-    Serial.print(", vel = ");
-    Serial.print(MIBY_ARG1(midi_state));
-    Serial.print(", voice = ");
-    Serial.println(voiceNumber);
+    // Serial.print( "<Ch.");
+    // Serial.print(MIBY_CHAN(midi_state));
+    // Serial.print( "> Note On :: note = ");
+    // Serial.print(MIBY_ARG0(midi_state));
+    // Serial.print(", vel = ");
+    // Serial.print(MIBY_ARG1(midi_state));
+    // Serial.print(", voice = ");
+    // Serial.println(voiceNumber);
 
     if(voiceNumber == 0xFF)
       return;
@@ -777,6 +1005,14 @@ void miby_note_on( miby_this_t midi_state )
       voiceNoteOn(voiceNumber,
                   MIBY_ARG0(midi_state),
                   MIBY_ARG1(midi_state));
+      printVoiceDacValues(&voicess[0]);
+      printVoiceDacValues(&voicess[1]);
+      printVoiceDacValues(&voicess[2]);
+      printVoiceDacValues(&voicess[3]);
+      printVoiceDacValues(&voicess[4]);
+      printVoiceDacValues(&voicess[5]);
+      Serial.println("------------------------------");
+
     }
   }
 }
@@ -791,14 +1027,14 @@ void miby_note_off( miby_this_t midi_state )
   //                                                  MIBY_ARG1(midi_state) );
   uint8_t voiceNumber = findVoiceWithNote(MIBY_ARG0(midi_state));
 
-  Serial.print( "<Ch.");
-  Serial.print(MIBY_CHAN(midi_state));
-  Serial.print( "> Note Off :: note = ");
-  Serial.print(MIBY_ARG0(midi_state));
-  Serial.print(", vel = ");
-  Serial.print(MIBY_ARG1(midi_state));
-  Serial.print(", voice = ");
-  Serial.println(voiceNumber);
+  // Serial.print( "<Ch.");
+  // Serial.print(MIBY_CHAN(midi_state));
+  // Serial.print( "> Note Off :: note = ");
+  // Serial.print(MIBY_ARG0(midi_state));
+  // Serial.print(", vel = ");
+  // Serial.print(MIBY_ARG1(midi_state));
+  // Serial.print(", voice = ");
+  // Serial.println(voiceNumber);
 
   if(voiceNumber == 0xFF)
     return;
@@ -806,6 +1042,13 @@ void miby_note_off( miby_this_t midi_state )
     voiceNoteOff(voiceNumber,
                 MIBY_ARG0(midi_state),
                 MIBY_ARG1(midi_state));
+    printVoiceDacValues(&voicess[0]);
+    printVoiceDacValues(&voicess[1]);
+    printVoiceDacValues(&voicess[2]);
+    printVoiceDacValues(&voicess[3]);
+    printVoiceDacValues(&voicess[4]);
+    printVoiceDacValues(&voicess[5]);
+    Serial.println("------------------------------");
   }
 
 }
@@ -822,79 +1065,78 @@ void miby_rt_system_reset( miby_this_t sss )
 /*****************************************************************************/
 /** Realtime Timing Clock                                                   **/
 /*****************************************************************************/
-void test_rt_timing_clock( miby_this_t sss )
-{
-  Serial.println("[F8] SysRT: timing clock" );
-}
+// void test_rt_timing_clock( miby_this_t sss )
+// {
+//   Serial.println("[F8] SysRT: timing clock" );
+// }
 
 /*****************************************************************************/
 /** Realtime Start                                                          **/
 /*****************************************************************************/
-void test_rt_start( miby_this_t sss )
-{
-  Serial.println("[FA] SysRT: start" );
-}
+// void test_rt_start( miby_this_t sss )
+// {
+//   Serial.println("[FA] SysRT: start" );
+// }
 
 /*****************************************************************************/
 /** Realtime Continue                                                       **/
 /*****************************************************************************/
-void test_rt_continue( miby_this_t sss )
-{
-  Serial.println("[FB] SysRT: continue" );
-}
+// void test_rt_continue( miby_this_t sss )
+// {
+//   Serial.println("[FB] SysRT: continue" );
+// }
 
 /*****************************************************************************/
 /** Realtime Stop                                                           **/
 /*****************************************************************************/
-void test_rt_stop( miby_this_t sss )
-{
-  Serial.println("[FC] SysRT: stop" );
-}
+// void test_rt_stop( miby_this_t sss )
+// {
+//   Serial.println("[FC] SysRT: stop" );
+// }
 
 /*****************************************************************************/
 /** Realtime Active Sense                                                   **/
 /*****************************************************************************/
-void test_rt_active_sense( miby_this_t sss )
-{
-  printf( NEWTAB "[FE] " );
-  printf( "SysRT: active sense\n" );
-}
+// void test_rt_active_sense( miby_this_t sss )
+// {
+//   Serial.println( NEWTAB "[FE] SysRT: active sense" );
+// }
 
 /*****************************************************************************/
 /** MIDI Time Code                                                          **/
 /*****************************************************************************/
-void test_mtc( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-  printf( "SysCom: Timecode :: type = %02X, value = %02X\n", MIBY_ARG0(sss) >> 4, MIBY_ARG0(sss) & 0xF );
-}
+// void test_mtc( miby_this_t sss )
+// {
+//   printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
+//   printf( "SysCom: Timecode :: type = %02X, value = %02X\n", MIBY_ARG0(sss) >> 4, MIBY_ARG0(sss) & 0xF );
+// }
 
 /*****************************************************************************/
 /** Song Position                                                           **/
 /*****************************************************************************/
-void test_songpos( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-  printf( "SysCom: Song Position :: LSB = %02X, MSB = %02X\n", MIBY_ARG0(sss), MIBY_ARG1(sss) );
-}
+// void test_songpos( miby_this_t sss )
+// {
+//   printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
+//   printf( "SysCom: Song Position :: LSB = %02X, MSB = %02X\n", MIBY_ARG0(sss), MIBY_ARG1(sss) );
+// }
 
 /*****************************************************************************/
 /** Song Select                                                             **/
 /*****************************************************************************/
-void test_songsel( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-  printf( "SysCom: Song Select :: song %02X\n", MIBY_ARG0(sss) );
-}
+// void test_songsel( miby_this_t sss )
+// {
+//   printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
+//   printf( "SysCom: Song Select :: song %02X\n", MIBY_ARG0(sss) );
+// }
 
 /*****************************************************************************/
 /** Tune Request                                                            **/
 /*****************************************************************************/
-void test_tunereq( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X] ", MIBY_STATUSBYTE(sss) );
-  printf( "SysCom: Tune Request\n" );
-}
+// void test_tunereq( miby_this_t sss )
+// {
+//   printf( NEWTAB "[%02X] ", MIBY_STATUSBYTE(sss) );
+//   printf( "SysCom: Tune Request\n" );
+// }
 
 /*****************************************************************************/
 /** Polyphonic Aftertouch                                                   **/
@@ -911,12 +1153,12 @@ void test_poly_at( miby_this_t sss )
 /*****************************************************************************/
 void test_cc( miby_this_t sss )
 {
-  Serial.print( "<Ch.");
-  Serial.print(MIBY_CHAN(sss));
-  Serial.print( "> Ctrl Change :: control # = ");
-  Serial.print( MIBY_ARG0(sss));
-  Serial.print( ", value = ");
-  Serial.println(MIBY_ARG1(sss));
+  // Serial.print(MIBY_CHAN(sss));
+  // Serial.print(MIBY_ARG0(sss));
+  // Serial.println(MIBY_ARG1(sss));
+  if(MIBY_ARG0(sss) < 34) {
+    controlValues[MIBY_ARG0(sss)] = MIBY_ARG1(sss);
+  }
 }
 
 /*****************************************************************************/
@@ -944,10 +1186,10 @@ void test_chanat( miby_this_t sss )
 /*****************************************************************************/
 void test_pb( miby_this_t sss )
 {
-  // printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-  Serial.print( "<Ch."); Serial.print(MIBY_CHAN(sss));
-  Serial.print( "> Pitchbend :: ");
-  Serial.println(( MIBY_ARG1(sss) << 7 ) + MIBY_ARG0(sss) );
+  Serial.print("PB:");
+  Serial.print(MIBY_CHAN(sss));
+  Serial.print(MIBY_ARG1(sss));
+  Serial.println(MIBY_ARG0(sss));
 }
 
 /*****************************************************************************/
@@ -958,11 +1200,11 @@ void test_sysex( miby_this_t sss )
   int i;
   static char *sysex_state[] = { "IDLE", "START", "MID", "END", "ABORT" };
 
-  printf( NEWTAB "[F0] SYSEX chunk: state = %02X (%s), length = %02X bytes\n",
-        MIBY_SYSEX_STATE(sss),
-        sysex_state[MIBY_SYSEX_STATE(sss)],
-        MIBY_SYSEX_LEN(sss) );
-  printf( TAB "\t[" );
+  // printf( NEWTAB "[F0] SYSEX chunk: state = %02X (%s), length = %02X bytes\n",
+  //       MIBY_SYSEX_STATE(sss),
+  //       sysex_state[MIBY_SYSEX_STATE(sss)],
+  //       MIBY_SYSEX_LEN(sss) );
+  // printf( TAB "\t[" );
   for ( i = 0; i < MIBY_SYSEX_LEN(sss); i++ )
   {
     if ( i )
@@ -987,7 +1229,7 @@ void processSerialInput(char rx_byte) {
       uint8_t note = 49;
       selectedVoice = rx_byte - 49;
       note += selectedVoice * 5;
-      voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, note, 127) : voiceNoteOn(selectedVoice, note, 0);
+      voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, note, 80) : voiceNoteOn(selectedVoice, note, 80);
     }
     break;
     case 113: {
@@ -1114,13 +1356,13 @@ void processSerialInput(char rx_byte) {
       break;
   }
 
-  // Serial.print("1/2/3");
-  // Serial.print("\tCV: q/a");
-  // Serial.print("\tMOD: w/s");
-  // Serial.print("\tWAV: e/d");
-  // Serial.print("\tPWM: r/f");
-  // Serial.print("\tMIX: t/g");
-  // Serial.print("\tVCF: y/h");
-  // Serial.print("\tRES: u/j");
-  // Serial.println("\tVCA: i/k");
+  Serial.print("1/2/3");
+  Serial.print("\tCV: q/a");
+  Serial.print("\tMOD: w/s");
+  Serial.print("\tWAV: e/d");
+  Serial.print("\tPWM: r/f");
+  Serial.print("\tMIX: t/g");
+  Serial.print("\tVCF: y/h");
+  Serial.print("\tRES: u/j");
+  Serial.println("\tVCA: i/k");
 }

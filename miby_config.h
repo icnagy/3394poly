@@ -28,7 +28,7 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ************************************************************************* */
- 
+
 #ifndef MIBY_CONFIG_H
 #define MIBY_CONFIG_H
 
@@ -39,14 +39,14 @@
 
 /** Maximum length of SysEx Receive Buffer **/
 #ifndef MIBY_SYSEX_BUF_LEN
-#define MIBY_SYSEX_BUF_LEN          ( 128 )
+#define MIBY_SYSEX_BUF_LEN          ( 256 )
 #endif
 
 /** Initial length of SysEx message chunk **/
 /** To minimise processing overhead we treat the start of the SysEx
   * message quicker than waiting for an entire buffer's worth of
-  * data, only then to find out it is not for this device. 
-  * For Manufacturer messages the first 1 or 3 bytes are the 
+  * data, only then to find out it is not for this device.
+  * For Manufacturer messages the first 1 or 3 bytes are the
   * Manufacturer's ID code.
   * Universal SysEx messages always have a 3 byte header, with the
   * first byte being 0x7E for non-realtime and 0x7F for realtime,
