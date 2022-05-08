@@ -617,9 +617,12 @@ void updateEnvelope(envelope_structure *envelope, voice *voice) {
   }
 }
 
+#define NOTE_OFF 0
+#define NOTE_ON  1
+
 int findVoiceWithNote(uint8_t note) {
   for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].gate == 1 && voicess[i].note == note)
+    if(voicess[i].gate == NOTE_ON && voicess[i].note == note)
       return i;
   }
   return -1;
@@ -627,7 +630,7 @@ int findVoiceWithNote(uint8_t note) {
 
 int findIdleVoice() {
   for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].gate == 0 && voicess[i].vca_envelope.state == ENV_IDLE)
+    if(voicess[i].gate == NOTE_OFF && voicess[i].vca_envelope.state == ENV_IDLE)
       return i;
   }
   return -1;
@@ -636,7 +639,7 @@ int findIdleVoice() {
 #define INVERTED_NOTE_TO_CV_VALUE(note) CV_MAX_VALUE - ((controlValues[CC_COARSE] << 3 - controlValues[CC_COARSE]) + controlValues[CC_FINE] + (72 * note))
 
 void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
-  voicess[voiceNo].gate = 1;
+  voicess[voiceNo].gate = NOTE_ON;
   voicess[voiceNo].note = note;
   voicess[voiceNo].dacValues[CV] = constrain(INVERTED_NOTE_TO_CV_VALUE(note), CV_MIN_VALUE, CV_MAX_VALUE);
   voicess[voiceNo].velocity = velocity;
@@ -645,7 +648,7 @@ void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
 }
 
 void voiceNoteOff(int voiceNo, uint8_t note, uint8_t velocity) {
-  voicess[voiceNo].gate = 0;
+  voicess[voiceNo].gate = NOTE_OFF;
   voicess[voiceNo].note = note;
   voicess[voiceNo].velocity = velocity;
   voicess[voiceNo].vca_envelope.state = ENV_RELEASE;
@@ -788,7 +791,6 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
 /** Realtime Active Sense                                                   **/
 /*****************************************************************************/
 
-uint32_t previousLastMessageReceived = 0;
 uint32_t lastMessageReceived = 0;
 
 miby_t m;
@@ -847,7 +849,7 @@ void loop() {
 
 void panic() {
   for(int i=0; i < NUMBER_OF_VOICES; i++) {
-    voicess[i].gate = 0;
+    voicess[i].gate = NOTE_OFF;
     voicess[i].vca_envelope.value = 0;
     voicess[i].vcf_envelope.value = 0;
     voicess[i].lfo.value = 0;
@@ -1229,7 +1231,7 @@ void processSerialInput(char rx_byte) {
       uint8_t note = 49;
       selectedVoice = rx_byte - 49;
       note += selectedVoice * 5;
-      voicess[selectedVoice].gate == 1 ? voiceNoteOff(selectedVoice, note, 80) : voiceNoteOn(selectedVoice, note, 80);
+      voicess[selectedVoice].gate == NOTE_ON ? voiceNoteOff(selectedVoice, note, 80) : voiceNoteOn(selectedVoice, note, 80);
     }
     break;
     case 113: {

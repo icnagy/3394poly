@@ -183,7 +183,7 @@ MP4922 pin 6  NC
 MP4922 pin 7  NC
 
 MP4922 pin 8  ~LDAC / GND
-MP4922 pin 9  ~SHDN / NC?
+MP4922 pin 9  ~SHDN / +5V
 MP4922 pin 10 Voutb / 10k / Opamp Non-inverting input
 MP4922 pin 11 Vrefb / +5V
 MP4922 pin 12 GND
