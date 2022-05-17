@@ -2,6 +2,10 @@
 #include <DirectIO.h>
 #include "miby.h"
 
+// #define DISPLAY_MIDI_DATA
+// #define DISPLAY_VOICE_DATA
+// #define USE_KEYBOARD
+
 #define VREF 5
 #define DAC_STEPS 4096
 #define VOLT_PER_OCTAVE_NOTE 0.75/12
@@ -824,27 +828,32 @@ void loop() {
   if (Serial.available() > 0) {    // Midi input available?
     rx_byte = Serial.read();       // get midi input
 
-    // Serial.print(rx_byte);
+#ifdef USE_KEYBOARD
+    Serial.print(rx_byte);
     processSerialInput(rx_byte);
-
-    // miby_parse( &m, rx_byte);
-    // if ( MIBY_ERROR_MISSING_DATA(&m) )
-    // {
-    //   Serial.println( "*** MISSING DATA ***\n" );
-    //   MIBY_CLEAR_MISSING_DATA(&m);
-    // }
-    // lastMessageReceived = millis();
+#else
+    miby_parse( &m, rx_byte);
+    if ( MIBY_ERROR_MISSING_DATA(&m) )
+    {
+      Serial.println( "*** MISSING DATA ***\n" );
+      MIBY_CLEAR_MISSING_DATA(&m);
+    }
+#endif
+    lastMessageReceived = millis();
   }
-  // if(millis() - lastMessageReceived > 1000) {
-  //   lastMessageReceived = millis();
-  //   printVoiceDacValues(&voicess[0]);
-  //   printVoiceDacValues(&voicess[1]);
-  //   printVoiceDacValues(&voicess[2]);
-  //   printVoiceDacValues(&voicess[3]);
-  //   printVoiceDacValues(&voicess[4]);
-  //   printVoiceDacValues(&voicess[5]);
-  //   Serial.println("------------------------------");
-  // }
+
+#ifdef DISPLAY_VOICE_DATA
+  if(millis() - lastMessageReceived > 1000) {
+    lastMessageReceived = millis();
+    printVoiceDacValues(&voicess[0]);
+    printVoiceDacValues(&voicess[1]);
+    printVoiceDacValues(&voicess[2]);
+    printVoiceDacValues(&voicess[3]);
+    printVoiceDacValues(&voicess[4]);
+    printVoiceDacValues(&voicess[5]);
+    Serial.println("------------------------------");
+  }
+#endif
 }
 
 void panic() {
@@ -992,21 +1001,23 @@ void miby_note_on( miby_this_t midi_state )
     uint8_t voiceNumber = 0xFF;
     voiceNumber = findIdleVoice();
 
-    // Serial.print( "<Ch.");
-    // Serial.print(MIBY_CHAN(midi_state));
-    // Serial.print( "> Note On :: note = ");
-    // Serial.print(MIBY_ARG0(midi_state));
-    // Serial.print(", vel = ");
-    // Serial.print(MIBY_ARG1(midi_state));
-    // Serial.print(", voice = ");
-    // Serial.println(voiceNumber);
-
+#ifdef DISPLAY_MIDI_DATA
+    Serial.print( "<Ch.");
+    Serial.print(MIBY_CHAN(midi_state));
+    Serial.print( "> Note On :: note = ");
+    Serial.print(MIBY_ARG0(midi_state));
+    Serial.print(", vel = ");
+    Serial.print(MIBY_ARG1(midi_state));
+    Serial.print(", voice = ");
+    Serial.println(voiceNumber);
+#endif
     if(voiceNumber == 0xFF)
       return;
     else {
       voiceNoteOn(voiceNumber,
                   MIBY_ARG0(midi_state),
                   MIBY_ARG1(midi_state));
+#ifdef DISPLAY_VOICE_DATA
       printVoiceDacValues(&voicess[0]);
       printVoiceDacValues(&voicess[1]);
       printVoiceDacValues(&voicess[2]);
@@ -1014,7 +1025,7 @@ void miby_note_on( miby_this_t midi_state )
       printVoiceDacValues(&voicess[4]);
       printVoiceDacValues(&voicess[5]);
       Serial.println("------------------------------");
-
+#endif
     }
   }
 }
@@ -1029,14 +1040,16 @@ void miby_note_off( miby_this_t midi_state )
   //                                                  MIBY_ARG1(midi_state) );
   uint8_t voiceNumber = findVoiceWithNote(MIBY_ARG0(midi_state));
 
-  // Serial.print( "<Ch.");
-  // Serial.print(MIBY_CHAN(midi_state));
-  // Serial.print( "> Note Off :: note = ");
-  // Serial.print(MIBY_ARG0(midi_state));
-  // Serial.print(", vel = ");
-  // Serial.print(MIBY_ARG1(midi_state));
-  // Serial.print(", voice = ");
-  // Serial.println(voiceNumber);
+#ifdef DISPLAY_MIDI_DATA
+  Serial.print( "<Ch.");
+  Serial.print(MIBY_CHAN(midi_state));
+  Serial.print( "> Note Off :: note = ");
+  Serial.print(MIBY_ARG0(midi_state));
+  Serial.print(", vel = ");
+  Serial.print(MIBY_ARG1(midi_state));
+  Serial.print(", voice = ");
+  Serial.println(voiceNumber);
+#endif
 
   if(voiceNumber == 0xFF)
     return;
@@ -1044,6 +1057,7 @@ void miby_note_off( miby_this_t midi_state )
     voiceNoteOff(voiceNumber,
                 MIBY_ARG0(midi_state),
                 MIBY_ARG1(midi_state));
+#ifdef DISPLAY_VOICE_DATA
     printVoiceDacValues(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
     printVoiceDacValues(&voicess[2]);
@@ -1051,6 +1065,7 @@ void miby_note_off( miby_this_t midi_state )
     printVoiceDacValues(&voicess[4]);
     printVoiceDacValues(&voicess[5]);
     Serial.println("------------------------------");
+#endif
   }
 
 }
@@ -1155,9 +1170,11 @@ void test_poly_at( miby_this_t sss )
 /*****************************************************************************/
 void test_cc( miby_this_t sss )
 {
-  // Serial.print(MIBY_CHAN(sss));
-  // Serial.print(MIBY_ARG0(sss));
-  // Serial.println(MIBY_ARG1(sss));
+#ifdef DISPLAY_MIDI_DATA
+  Serial.print(MIBY_CHAN(sss));
+  Serial.print(MIBY_ARG0(sss));
+  Serial.println(MIBY_ARG1(sss));
+#endif
   if(MIBY_ARG0(sss) < 34) {
     controlValues[MIBY_ARG0(sss)] = MIBY_ARG1(sss);
   }
@@ -1188,10 +1205,12 @@ void test_chanat( miby_this_t sss )
 /*****************************************************************************/
 void test_pb( miby_this_t sss )
 {
+#ifdef DISPLAY_MIDI_DATA
   Serial.print("PB:");
   Serial.print(MIBY_CHAN(sss));
   Serial.print(MIBY_ARG1(sss));
   Serial.println(MIBY_ARG0(sss));
+#endif
 }
 
 /*****************************************************************************/
@@ -1219,7 +1238,7 @@ void test_sysex( miby_this_t sss )
 
   MIBY_SYSEX_DONE_OK(sss);
 }
-
+#ifdef USE_KEYBOARD
 void processSerialInput(char rx_byte) {
   switch(rx_byte){
     case 49:
@@ -1368,3 +1387,4 @@ void processSerialInput(char rx_byte) {
   Serial.print("\tRES: u/j");
   Serial.println("\tVCA: i/k");
 }
+#endif
