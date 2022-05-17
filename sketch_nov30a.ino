@@ -663,7 +663,7 @@ static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
 OutputPort<PORT_B> voiceParamSelect;                    // Arduino pin 8, 9, 10 to 4051 11, 10, 9
-OutputPort<PORT_D, 2, 3> voiceSelectPort;               // Arduino pin 3, 4, 5
+OutputPort<PORT_D, 2, 4> voiceSelectPort;               // Arduino pin 3, 4, 5
 Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP4922 pin 3
 Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051 pin 6
 
@@ -730,7 +730,7 @@ uint8_t preMainLoop = 1;
 uint8_t irq1Count = 0;
 uint16_t irq2Count = 0;
 
-ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
+uint8_t notVoiceSelectTable[6] = { 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1F };
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   if(preMainLoop)
@@ -748,7 +748,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
     // Send value to DAC
     updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);
 
-    voiceSelectPort.write(voiceNumber);   // Voice Select
+    voiceSelectPort.write(notVoiceSelectTable[voiceNumber]);   // Voice Select
     voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
 
     m_outputDisableMultiplex = LOW;       // Enable Multiplex
