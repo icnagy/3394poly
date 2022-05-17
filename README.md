@@ -234,3 +234,38 @@ MP4922 pin 14 Vouta / 10k / Opamp Inverting input / 4051 pin 3
 4051 pin 15 | out 2  | AS3394 pin 7 WAVE_SELECT
 4051 pin 16 | Vdd    | +5V
 ```
+
+### Inverse bits
+
+| Voice No | Decimal | Binary    | Inv. Binary | Hex  |
+|----------|---------|-----------|-------------|------|
+| 1        | 1       | xx000001b | xx11 1110b  | 0x3E |
+| 2        | 2       | xx000010b | xx11 1101b  | 0x3D |
+| 3        | 4       | xx000100b | xx11 1011b  | 0x3B |
+| 4        | 8       | xx001000b | xx11 0111b  | 0x37 |
+| 5        | 16      | xx010000b | xx10 1111b  | 0x2F |
+| 6        | 32      | xx100000b | xx01 1111b  | 0x1F |
+
+### simavr
+
+```bash
+$ cd /usr/local/Cellar/simavr/HEAD-7c4afd1/examples/board_simduino
+$ export SIMAVR_UART_XTERM=1
+$ ./simduino
+```
+
+```bash
+avrdude -p m328p -c arduino -P /dev/ttys005 -U flash:w:atmega328p_dummy_blinky.hex
+```
+
+
+```bash
+simavr -v -v  -m atmega328 -f 16000000 ./sketch_nov30a.ino.elf -g
+```
+
+```bash
+avr-gdb -se ./build/sketch_nov30a.ino.elf
+target remote :1234
+b loop
+c
+```
