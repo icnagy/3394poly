@@ -726,11 +726,15 @@ void initializeInterrupts() {
   sei();                                    // allow interrupts
 }
 
+uint8_t preMainLoop = 1;
 uint8_t irq1Count = 0;
 uint16_t irq2Count = 0;
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 
+ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
+  if(preMainLoop)
+    return;
   uint8_t voiceNumber = 0;
   uint8_t voiceParamNumber = 0;
 
@@ -755,6 +759,8 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 }
 
 ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
+  if(preMainLoop)
+    return;
   // Update Envelope
   for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
     // if(continuous_controller_changed) {}
@@ -819,6 +825,8 @@ void setup() {
   panic();
 
   initializeInterrupts();
+
+  preMainLoop = 0;
 }
 
 char rx_byte = 0;
