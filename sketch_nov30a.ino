@@ -670,13 +670,11 @@ void voiceNoteOff(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].vcf_envelope.state = ENV_RELEASE;
 }
 
-static constexpr unsigned k_pinDisableMultiplex = 6;
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
 OutputPort<PORT_B> voiceParamSelect;                    // Arduino pin 8, 9, 10 to 4051 11, 10, 9
-OutputPort<PORT_D, 2, 4> voiceSelectPort;               // Arduino pin 3, 4, 5
+OutputPort<PORT_D, 2, 5> voiceSelectPort;               // Arduino pin 3, 4, 5, 6
 Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP4922 pin 3
-Output<k_pinDisableMultiplex> m_outputDisableMultiplex; // Arduino pin 6 to 4051 pin 6
 
 #define DAC_A_GAIN 1 // 0: x2, 1: x1
 #define DAC_B_GAIN 1 // 0: x2, 1: x1
@@ -740,7 +738,7 @@ uint8_t irq1Count = 0;
 uint16_t irq2Count = 0;
 
 uint8_t notVoiceSelectTable[6] = { 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1F };
-#define DISABLE_MULTIPLEX 0x00
+#define DISABLE_MULTIPLEX 0x3F
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   if(preMainLoop)
@@ -754,7 +752,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   voiceParamNumber = irq1Count & 0x07;                          // 0..7 => 0bxxx000 ... 0bxxx111
 
   // if(voicess[voiceNumber].vca_envelope.state != ENV_IDLE) {
-  if(voiceNumber < 1) {
+  if(voiceNumber < 5) {
     updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);  // Send value to DAC
     voiceParamSelect.write(voiceParamNumber);                   // VoiceParam Select
     voiceSelectPort.write(notVoiceSelectTable[voiceNumber]);    // Voice Select / Enable voice param select multiplexer
@@ -821,7 +819,6 @@ void setup() {
   cli();                                    // stop interrupts
 
   m_outputChipSelectDAC = LOW;     // Disable DAC (~CS)
-  m_outputDisableMultiplex = HIGH; // Disable Multiplex
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
