@@ -9,12 +9,21 @@
 
 #define VREF 4096
 #define DAC_STEPS 4096
-#define DAC_MAX_CODE 4095
 #define VOLT_PER_OCTAVE_NOTE 0.75/12
 #define DAC_STEP_PER_NOTE (VOLT_PER_OCTAVE_NOTE) / (VREF / DAC_STEPS)
 
 #define NUMBER_OF_VOICES 6
 #define NUMBER_OF_PARAMS 8
+
+#ifdef DAC_TEST
+
+uint16_t gain = 0;
+uint16_t offset = 0;
+
+#define DAC_MAX_CODE 4095
+#define DAC_TEST_STEP_SIZE 127
+
+#endif // DAC_TEST
 
 enum DAC_PARAM {
   DAC_PARAM_CUTOFF,
@@ -731,6 +740,7 @@ uint8_t irq1Count = 0;
 uint16_t irq2Count = 0;
 
 uint8_t notVoiceSelectTable[6] = { 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1F };
+#define DISABLE_MULTIPLEX 0x00
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   if(preMainLoop)
@@ -738,21 +748,24 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   uint8_t voiceNumber = 0;
   uint8_t voiceParamNumber = 0;
 
-  voiceNumber = irq1Count >> 3;         // 0..5 => 0b000xxx ... 0b101xxx
+  voiceSelectPort.write(DISABLE_MULTIPLEX);                     // Disable Voice param select multiplexer
 
-  if(voicess[voiceNumber].vca_envelope.state != ENV_IDLE) {
-    voiceParamNumber = irq1Count & 0x07;  // 0..7 => 0bxxx000 ... 0bxxx111
+  voiceNumber = irq1Count >> 3;                                 // 0..5 => 0b000xxx ... 0b101xxx
+  voiceParamNumber = irq1Count & 0x07;                          // 0..7 => 0bxxx000 ... 0bxxx111
 
-    m_outputDisableMultiplex = HIGH;      // Disable Multiplex
-
-    // Send value to DAC
-    updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);
-
-    voiceSelectPort.write(notVoiceSelectTable[voiceNumber]);   // Voice Select
-    voiceParamSelect.write(voiceParamNumber); // VoiceParam Select
-
-    m_outputDisableMultiplex = LOW;       // Enable Multiplex
+  // if(voicess[voiceNumber].vca_envelope.state != ENV_IDLE) {
+  if(voiceNumber < 1) {
+    updateVoiceParam[voiceParamNumber](&voicess[voiceNumber]);  // Send value to DAC
+    voiceParamSelect.write(voiceParamNumber);                   // VoiceParam Select
+    voiceSelectPort.write(notVoiceSelectTable[voiceNumber]);    // Voice Select / Enable voice param select multiplexer
+                                                                // We update the voice param 4051 first,
+                                                                // because the voice channel select pins
+                                                                // (Arduino D3-D4-D5-D6) are functioning as
+                                                                // a multiplex enable/disable pin.
+                                                                // The voice param select 4051 is disabled
+                                                                // till the DAC is updated.
   }
+
   irq1Count++;
   if(irq1Count > 47)
     irq1Count = 0;
@@ -790,11 +803,10 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
     voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
   }
 
-  // irq2Count++;
-  // if(irq2Count > 1146/2){
-  //   irq2Count = 0;
-  // }
-
+  irq2Count++;
+  if(irq2Count > 1146){
+    irq2Count = 0;
+  }
 }
 
 /*****************************************************************************/
@@ -833,11 +845,6 @@ void setup() {
   lastMessageReceived = millis();
 }
 
-uint16_t gain = 0;
-uint16_t offset = 0;
-
-#define DAC_TEST_STEP_SIZE 127
-
 void loop() {
 #ifdef DAC_TEST
   if(millis() - lastMessageReceived > 5000) {
@@ -860,9 +867,9 @@ void loop() {
   }
 #else // DAC_TEST
 
-  if (Serial.available() > 0) {    // Midi input available?
+  if (Serial.available() > 0) {    // Midi/Serial input available?
     char rx_byte = 0;
-    rx_byte = Serial.read();       // get midi input
+    rx_byte = Serial.read();       // Get midi/serial input
 
 #ifdef USE_KEYBOARD
     Serial.print(rx_byte);
