@@ -5,9 +5,11 @@
 // #define DISPLAY_MIDI_DATA
 // #define DISPLAY_VOICE_DATA
 // #define USE_KEYBOARD
+// #define DAC_TEST
 
-#define VREF 5
+#define VREF 4096
 #define DAC_STEPS 4096
+#define DAC_MAX_CODE 4095
 #define VOLT_PER_OCTAVE_NOTE 0.75/12
 #define DAC_STEP_PER_NOTE (VOLT_PER_OCTAVE_NOTE) / (VREF / DAC_STEPS)
 
@@ -722,8 +724,6 @@ void initializeInterrupts() {
   TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);
   // enable timer compare interrupt
   TIMSK2 |= (1 << OCIE2A);
-
-  sei();                                    // allow interrupts
 }
 
 uint8_t preMainLoop = 1;
@@ -818,22 +818,50 @@ void setup() {
 
   // Serial.begin(115200);
   Serial.begin(31250); // MIDI?
-  // Serial.println("Hello world");
-
+  Serial.println("Hello world");
+#ifndef DAC_TEST
   miby_init( &m, NULL );
 
   panic();
 
   initializeInterrupts();
+#endif
 
   preMainLoop = 0;
+
+  sei();                                    // allow interrupts
+  lastMessageReceived = millis();
 }
 
-char rx_byte = 0;
-uint8_t selectedVoice = 0;
+uint16_t gain = 0;
+uint16_t offset = 0;
+
+#define DAC_TEST_STEP_SIZE 127
 
 void loop() {
+#ifdef DAC_TEST
+  if(millis() - lastMessageReceived > 5000) {
+    lastMessageReceived = millis();
+
+    Serial.print("Gain|Offset: ");
+    Serial.print(gain);Serial.print("|");Serial.println(offset);
+    updateDAC(constrain(gain, 0, DAC_MAX_CODE),
+              constrain(offset, 0, DAC_MAX_CODE));
+
+    offset += DAC_TEST_STEP_SIZE;
+    if(offset >= DAC_MAX_CODE){
+      offset = 0;
+      gain += DAC_TEST_STEP_SIZE;
+    }
+    if(gain >= DAC_MAX_CODE){
+      offset = 0;
+      gain = 0;
+    }
+  }
+#else // DAC_TEST
+
   if (Serial.available() > 0) {    // Midi input available?
+    char rx_byte = 0;
     rx_byte = Serial.read();       // get midi input
 
 #ifdef USE_KEYBOARD
@@ -847,7 +875,6 @@ void loop() {
       MIBY_CLEAR_MISSING_DATA(&m);
     }
 #endif
-    lastMessageReceived = millis();
   }
 
 #ifdef DISPLAY_VOICE_DATA
@@ -862,6 +889,7 @@ void loop() {
     Serial.println("------------------------------");
   }
 #endif
+#endif // DAC_TEST
 }
 
 void panic() {
@@ -1247,6 +1275,8 @@ void test_sysex( miby_this_t sss )
   MIBY_SYSEX_DONE_OK(sss);
 }
 #ifdef USE_KEYBOARD
+uint8_t selectedVoice = 0;
+
 void processSerialInput(char rx_byte) {
   switch(rx_byte){
     case 49:
