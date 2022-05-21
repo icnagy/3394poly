@@ -41,6 +41,30 @@ Vout = Vin * (1 + R2/R1)
 
 ### DAC
 
+We have a dual 12bit DAC with a 4.096V reference and we want to cover -4V .. +4V (8Vpp) range. The DAC can only output positive voltage, so we need a trick to cover the -4V .. 0V part. Let's set up an OpAmp as an inverting adder.
+
+```
+  Vout = -Vin- + Vin+
+  Vout = -(DAC_OUTPUT_A) + DAC_OUTPUT_B
+```
+
+To get -4V:
+1. Set DAC_OUTPUT_A to +4V
+2. Set DAC_OUTPUT_B to 0V
+3. Vout = -4V + 0V => -4V
+
+To get +4V:
+1. Set DAC_OUTPUT_A to 0V
+2. Set DAC_OUTPUT_B to +4V
+3. Vout = -0V + 4V => 4V
+
+Anything in between is a matter of setting the DAC_OUTPUT_A and DAC_OUTPUT_B so that
+
+  `Vout = -(DAC_OUTPUT_A) + DAC_OUTPUT_B`
+
+From the MP4922 datasheet:
+
+```
 Example 6-4: Bipolar Voltage Source With Selectable Gain and Offset
 
 Vref = 5V
@@ -49,6 +73,7 @@ R1, R2, R3: 10k
 
 Gain: DACa digital input
 Offset: DACb digital input
+```
 
 Gain | Offset | Voltage |
 -----|--------|---------|
@@ -234,6 +259,19 @@ MP4922 pin 14 Vouta / 10k / Opamp Inverting input / 4051 pin 3
 4051 pin 15 | out 2  | AS3394 pin 13 MIXER
 4051 pin 16 | Vdd    | +5V
 ```
+
+## Multiplex order
+
+| Order | CV          | Range        | Misc                                        |
+|-------|-------------|--------------|---------------------------------------------|
+| 1.    | CUTOFF      | -3 .. +4 V   | -3V 24kHz => 4 0Hz (3/8V per octave)        |
+| 2.    | RESONANCE   |  0 .. +2.5 V |                                             |
+| 3.    | MIXER       | -2 .. +2 V   | -2 VCA2 1.72 VCA1                           |
+| 4.    | VCA         |  0 .. +4.3 V |                                             |
+| 5.    | PWM         |  0 .. +2.2 V |                                             |
+| 6.    | PITCH       | -4 .. +4 V   | V/Octave                                    |
+| 7.    | WAVE_SELECT | -2 .. +4 V   | -2 SQR -0.3 TRI +1.25 TRI + SAW +2.7 SAW 4V |
+| 8.    | MOD_AMOUNT  |  0 .. +4 V   |                                             |
 
 ### Inverse bits
 
