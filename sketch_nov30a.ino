@@ -6,6 +6,8 @@
 // #define DISPLAY_VOICE_DATA
 // #define USE_KEYBOARD
 // #define DAC_TEST
+// #define FIVE_VOLT_REFERENCE
+#define FOUR_OH_NINE_SIX_REFERENCE
 
 #define VREF 4096
 #define DAC_STEPS 4096
@@ -36,6 +38,8 @@ enum DAC_PARAM {
   DAC_PARAM_MOD_AMT,
   DAC_PARAM_LAST
 };
+
+#ifdef FIVE_VOLT_REFERENCE
 
 #define CUTOFF                0
 #define CUTOFF_GAIN_LOW       2500
@@ -129,6 +133,78 @@ enum DAC_PARAM {
 //GAIN: 0    OFFSET: 0        0
 //GAIN: 0    OFFSET: 3500     4.01
 
+#endif //FIVE_VOLT_REFERENCE
+
+#ifdef FOUR_OH_NINE_SIX_REFERENCE
+
+#define CUTOFF                0     // Order in multiplexer
+#define CUTOFF_GAIN_LOW       3000  // Where to set the OPAMPs gain when the CV is below 0V
+#define CUTOFF_GAIN_THRESHOLD 3000  // After which DAC value to switch over to the other gain
+#define CUTOFF_GAIN_HIGH      0     // Where to set the OPAMPs gain when the CV is above 0V
+#define CUTOFF_MIN_VALUE      0     // The smallest DAC value for this CV
+#define CUTOFF_MAX_VALUE      7000  // The largest DAC value for this CV
+#define CUTOFF_ZERO_VALUE     3000  // Where to reset this CV value
+// -3 .. +4 V
+// 3/8V per octave
+// -3V  24kHz => 4V 0 Hz (Inverted)
+
+#define RESONANCE           1       // Order in multiplexer
+#define RESONANCE_GAIN      0       // Where to set the OPAMPs gain for this CV
+#define RESONANCE_MIN_VALUE 0       // The smallest DAC value for this CV
+#define RESONANCE_MAX_VALUE 2500    // The largest DAC value for this CV
+// 0 .. +2.5 V
+
+#define MIXER            2          // Order in multiplexer
+#define MIXER_GAIN       2000       // Where to set the OPAMPs gain for this CV
+#define MIXER_MIN_VALUE  0          // The smallest DAC value for this CV VCA2 FULL VCA1 OFF
+#define MIXER_MAX_VALUE  4000       // The largest DAC value for this CV  VCA2 OFF  VCA1 FULL
+#define MIXER_ZERO_VALUE 2000       // Where to reset this CV value       VCA2 -6dB VCA1 -6dB
+// -2 .. 2 V
+
+#define VCA           3             // Order in multiplexer
+#define VCA_GAIN      0             // Where to set the OPAMPs gain for this CV
+#define VCA_MIN_VALUE 0             // The smallest DAC value for this CV
+#define VCA_MAX_VALUE 4200          // The largest DAC value for this CV
+// 0 .. +4.3 V
+
+#define PWM           4             // Order in multiplexer
+#define PWM_GAIN      100           // Where to set the OPAMPs gain for this CV
+#define PWM_MIN_VALUE 0             // The smallest DAC value for this CV
+#define PWM_MAX_VALUE 2300          // The largest DAC value for this CV
+// 0 .. +2.2 V
+// Needs to be/Can be set to a slightly negative CV to stop the SAW PWM
+
+#define CV                    5     // Order in multiplexer
+#define CV_GAIN_LOW           4095  // Where to set the OPAMPs gain when the CV is below 0V
+#define CV_GAIN_SWITCH_POINT  4096  // After which DAC value to switch over to the other gain
+#define CV_GAIN_HIGH          0     // Where to set the OPAMPs gain when the CV is above 0V
+#define CV_MIN_VALUE          0     // The smallest DAC value for this CV
+#define CV_MAX_VALUE          8192  // The largest DAC value for this CV
+#define CV_ZERO_VALUE         4096  // Where to reset this CV value
+// -4 .. +4 V
+// 3/4V per octave => 0.750mV per octave
+// 0.750V/12 => 0.0625V => 62.5 DAC steps between two consecutive half note
+
+#define WAVE_SELECT             6     // Order in multiplexer
+#define WAVE_SELECT_GAIN        2000  // Where to set the OPAMPs gain for this CV (-1V)
+#define WAVE_SELECT_MIN_VALUE   0     // The smallest DAC value for this CV
+#define WAVE_SELECT_MAX_VALUE   6000  // The largest DAC value for this CV
+#define WAVE_SELECT_ZERO_VALUE  700   // Where to reset this CV value
+#define WAVE_SELECT_SQR         1000  // (-2 + 1)   -1V   SQR
+#define WAVE_SELECT_TRI         2700  // (-2 + 2.7) +0.7V TRI
+#define WAVE_SELECT_TRI_SAW     4000  // (-2 + 4)   +2V   TRI_SAW
+#define WAVE_SELECT_SAW         5500  // (-2 + 5.5) +3.5V SAW
+// -2 .. +4 V
+// -2 V <-SQR-> -0.3 (+/-0.15) V <-TRI-> +1.25 (+/-0.3) V <-TRI + SAW-> +2.7 (+/-0.5) V <-SAW-> 4V
+
+#define MOD_AMT           7           // Order in multiplexer
+#define MOD_AMT_GAIN      0           // Where to set the OPAMPs gain for this CV
+#define MOD_AMT_MIN_VALUE 0           // The smallest DAC value for this CV
+#define MOD_AMT_MAX_VALUE 4000        // The largest DAC value for this CV
+// 0 .. +4 V
+
+#endif //FOUR_OH_NINE_SIX_REFERENCE
+
 enum LFO_SHAPE {
   LFO_SHAPE_SAW,
   LFO_SHAPE_RMP,
@@ -156,9 +232,9 @@ typedef struct lfo_structure {
   uint16_t value;
 } lfo;
 
-#define ENV_IDLE 0
-#define ENV_ATTACK 1
-#define ENV_DECAY 2
+#define ENV_IDLE    0
+#define ENV_ATTACK  1
+#define ENV_DECAY   2
 #define ENV_SUSTAIN 3
 #define ENV_RELEASE 4
 
@@ -173,41 +249,15 @@ typedef struct envelope_structure {
   uint16_t release_rate;
 } envelope;
 
-envelope_structure vca_envelope = {
-  ENV_IDLE, // state
-  VCA_MIN_VALUE, // min_value
-  VCA_MAX_VALUE, // max_value
-  VCA_MIN_VALUE, // value 0 - 3500
-  10,  // attack_rate
-  400,  // decay_rate
-  2500, // sustain_value
-  10  // release_rate
-};
-
-envelope_structure vcf_envelope = {
-  ENV_IDLE,
-  CUTOFF_MIN_VALUE, // min_value
-  CUTOFF_MAX_VALUE, // max_value
-  CUTOFF_MIN_VALUE, // value 0 - 6000
-  60,  // attack_rate
-  10,  // decay_rate
-  3500, // sustain_value
-  60  // release_rate
-};
-
 typedef struct voice_structure {
-  uint8_t vca_envelope_state;
-  uint16_t vca_envelope_value;
-  uint8_t vcf_envelope_state;
-  uint16_t vcf_envelope_value;
   envelope_structure vca_envelope = {
     ENV_IDLE, // state
     VCA_MIN_VALUE, // min_value
     VCA_MAX_VALUE, // max_value
     VCA_MIN_VALUE, // value 0 - 3500
     10,  // attack_rate
-    400,  // decay_rate
-    2500, // sustain_value
+    30,  // decay_rate
+    VCA_MAX_VALUE, // sustain_value
     10  // release_rate
   };
   envelope_structure vcf_envelope = {
@@ -217,7 +267,7 @@ typedef struct voice_structure {
     CUTOFF_MIN_VALUE, // value 0 - 6000
     60,  // attack_rate
     10,  // decay_rate
-    3500, // sustain_value
+    CUTOFF_MAX_VALUE, // sustain_value
     60  // release_rate
   };
   lfo_structure lfo = {
@@ -229,42 +279,20 @@ typedef struct voice_structure {
     LFO_MIN_VALUE, // accumulator
     LFO_MIN_VALUE  // value
   };
-  // uint16_t lfoModAmount[8] {
-  //   0, // LFO to PITCH
-  //   0, // LFO to MOD_AMT
-  //   0, // LFO to WAVE SELECT
-  //   0, // LFO to PWM
-  //   0, // LFO to MIXER
-  //   0, // LFO to RESONANCE
-  //   0, // LFO to VCF
-  //   0  // LFO to VCA
-  // };
   uint16_t dacValues[8] = {
-    0, // CUTOFF_MAX_VALUE / 2,         //   0..6000,   // Cutoff
-    0, // RESONANCE_MAX_VALUE / 2,   //   0..2000,   // Resonance
-    MIXER_MAX_VALUE, // MIXER_MAX_VALUE / 2,       //   0..3500,   // Mixer Balance
-    VCA_MIN_VALUE, // VCA_MAX_VALUE /2           //   0..3500    // VCA
-    PWM_MIN_VALUE, // PWM_MAX_VALUE / 2,         //   0..2000,   // PWM
-    CV_MAX_VALUE / 2,          //   0..7000,   // Key CV
-    1000,// WAVE_SELECT_TRI,           //   0..4000,   // Wave Select
-    0,         //   0..3500,   // Mod Amount
+    CUTOFF_MAX_VALUE,
+    RESONANCE_MIN_VALUE,
+    MIXER_MAX_VALUE,
+    VCA_MIN_VALUE,
+    PWM_MIN_VALUE,
+    CV_ZERO_VALUE,
+    WAVE_SELECT_SQR,
+    MOD_AMT_MIN_VALUE
   };
   uint8_t gate;
   uint8_t note;
   uint8_t velocity;
 } voice;
-
-// ZERO Volt DAC output
-// uint16_t dacValues[8] = {
-//   CV_MAX_VALUE / 2,              // Key CV
-//   MOD_AMT_MIN_VALUE,             // Mod Amount
-//   WAVE_SELECT_ZERO_VALUE,        // Wave Select
-//   PWM_MIN_VALUE,                 // PWM
-//   MIXER_ZERO_VALUE,              // Mixer Balance
-//   RESONANCE_MIN_VALUE,           // Resonance
-//   CUTOFF_ZERO_VALUE,             // Cutoff
-//   VCA_MIN_VALUE                  // VCA
-// };
 
 voice voicess[6];
 
@@ -288,7 +316,8 @@ void (*updateVoiceParam[8])(voice *) = {
   updateModAmount
 };
 
-// (0..128).map { |x| Math.exp(x/14.713).to_i }
+#ifdef FIVE_VOLT_REFERENCE
+
 uint16_t exp_vcf_lookup[128] = {
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5,
   6, 6, 7, 7, 8, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24,
@@ -300,7 +329,6 @@ uint16_t exp_vcf_lookup[128] = {
   5238, 5607, 6000
 };
 
-// (0..128).map { |x| Math.exp(x/15.685).to_i }
 uint16_t exp_vca_lookup[128] = {
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5,
   5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17, 18, 20, 21,
@@ -312,18 +340,42 @@ uint16_t exp_vca_lookup[128] = {
   3284, 3500
 };
 
+#endif // FIVE_VOLT_REFERENCE
+
+#ifdef FOUR_OH_NINE_SIX_REFERENCE
+uint16_t exp_vcf_lookup[128] = {
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6,
+  6, 6, 7, 7, 8, 9, 9, 10, 11, 12, 12, 13, 14, 15, 17, 18, 19, 20, 22, 24, 25, 27,
+  29, 31, 34, 36, 39, 41, 44, 48, 51, 55, 59, 63, 67, 72, 78, 83, 89, 96, 102, 110,
+  118, 126, 135, 145, 155, 167, 179, 191, 205, 220, 236, 253, 271, 290, 311, 333,
+  357, 383, 410, 440, 471, 505, 541, 580, 621, 666, 714, 765, 820, 878, 941, 1009,
+  1081, 1158, 1241, 1330, 1426, 1528, 1637, 1755, 1880, 2015, 2159, 2314, 2480, 2657,
+  2848, 3052, 3270, 3505, 3756, 4025, 4313, 4622, 4953, 5308, 5688, 6095, 6532, 6999
+};
+
+uint16_t exp_vca_lookup[128] = {
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5,
+  5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 11, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 23, 24,
+  26, 28, 29, 31, 34, 36, 38, 41, 44, 47, 50, 53, 57, 61, 65, 70, 74, 79, 85, 90,
+  97, 103, 110, 118, 126, 134, 143, 153, 163, 174, 186, 199, 212, 227, 242, 258,
+  276, 294, 314, 336, 358, 382, 408, 436, 465, 497, 531, 566, 605, 646, 689, 736,
+  785, 839, 895, 956, 1020, 1089, 1163, 1242, 1325, 1415, 1511, 1613, 1722, 1838,
+  1962, 2095, 2236, 2387, 2549, 2721, 2905, 3101, 3310, 3534, 3773, 4027, 4300
+};
+
+#endif // FOUR_OH_NINE_SIX_REFERENCE
+
 // Values to map from CC
 uint8_t controlValues[32];
 
-  // // VCO frequency
+  // VCO frequency
   uint8_t coarse;           // CC 2
-                            // octave (72 x 12) = 864
-                            // (72*12) - (7*127) = -25 (to be corrected by fine)
-                            // DAC value += coarse << 3 - coarse
+                            // octave (62.5 x 12) = 750
 
   uint8_t fine;             // CC 3
-                            // 0-63 => +/-32
-                            // DAC value += (fine >> 1)
+                            // 62.5 per semitone
+                            // 0-127 => +/- semitone
+                            // DAC value += fine
 
   uint8_t glide;            // CC 4
 
@@ -645,18 +697,31 @@ int findVoiceWithNote(uint8_t note) {
 
 int findIdleVoice() {
   for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].gate == NOTE_OFF && voicess[i].vca_envelope.state == ENV_IDLE)
+    if(voicess[i].gate == NOTE_OFF && (voicess[i].vca_envelope.state == ENV_IDLE || voicess[i].vca_envelope.state == ENV_RELEASE))
       return i;
   }
   return -1;
 }
 
-#define INVERTED_NOTE_TO_CV_VALUE(note) CV_MAX_VALUE - ((controlValues[CC_COARSE] << 3 - controlValues[CC_COARSE]) + controlValues[CC_FINE] + (72 * note))
+#ifdef FIVE_VOLT_REFERENCE
+  #define NOTE_TO_DAC_VALUE(note) CV_MAX_VALUE - ((controlValues[CC_COARSE] << 3 - controlValues[CC_COARSE]) + controlValues[CC_FINE] + (72 * note))
+#endif // FIVE_VOLT_REFERENCE
+
+#ifdef FOUR_OH_NINE_SIX_REFERENCE
+  // Pitch is 3/4V per octave or 0.750V per octave
+  // An octave has 12 semitones, each semitone is 0.750V / 12 = 0.0625V
+  // 0.0625V would be 62.5 steps on the DAC
+  // #define NOTE_TO_DAC_VALUE(note) CV_MAX_VALUE - (((125 * note) >> 1) - controlValues[CC_FINE])
+  #define NOTE_TO_DAC_VALUE(note) CV_MAX_VALUE - (((125 * note) >> 1))
+#endif // FOUR_OH_NINE_SIX_REFERENCE
 
 void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].gate = NOTE_ON;
   voicess[voiceNo].note = note;
-  voicess[voiceNo].dacValues[CV] = constrain(INVERTED_NOTE_TO_CV_VALUE(note), CV_MIN_VALUE, CV_MAX_VALUE);
+  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note), CV_MIN_VALUE, CV_MAX_VALUE);
+#ifdef DISPLAY_MIDI_DATA
+  Serial.println(voicess[voiceNo].dacValues[CV]);
+#endif
   voicess[voiceNo].velocity = velocity;
   voicess[voiceNo].vca_envelope.state = ENV_ATTACK;
   voicess[voiceNo].vcf_envelope.state = ENV_ATTACK;
@@ -689,6 +754,7 @@ Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP49
 #define k_writeChannelB (((0x1 << 7) | (DAC_B_BUFFER << 6) | (DAC_B_GAIN << 5) | (DAC_B_SHDN << 4)) << 8)
 
 // http://www.8bit-era.cz/arduino-timer-interrupts-calculator.html
+// https://www.instructables.com/Arduino-Timer-Interrupts/
 void initializeInterrupts() {
   cli();                                    // stop interrupts
 
@@ -724,9 +790,9 @@ void initializeInterrupts() {
   TCCR2B = 0; // same for TCCR2B
   TCNT2  = 0; // initialize counter value to 0
   // set compare match register for 1146.788990825688 Hz increments
-  OCR2A = 217; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
+  OCR2A = 176; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
   // turn on CTC mode
-  TCCR2B |= (1 << WGM21);
+  TCCR2A |= (1 << WGM21);
   // Set CS22, CS21 and CS20 bits for 64 prescaler
   TCCR2B |= (1 << CS22) | (0 << CS21) | (0 << CS20);
   // enable timer compare interrupt
@@ -899,18 +965,20 @@ void loop() {
 void panic() {
   for(int i=0; i < NUMBER_OF_VOICES; i++) {
     voicess[i].gate = NOTE_OFF;
-    voicess[i].vca_envelope.value = 0;
-    voicess[i].vcf_envelope.value = 0;
+    voicess[i].vca_envelope.state = ENV_IDLE;
+    voicess[i].vca_envelope.value = voicess[i].vca_envelope.min_value;
+    voicess[i].vcf_envelope.state = ENV_IDLE;
+    voicess[i].vcf_envelope.value = voicess[i].vcf_envelope.min_value;
     voicess[i].lfo.value = 0;
 
-    voicess[i].dacValues[CV] =          CV_MAX_VALUE / 2;
-    voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;
-    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_ZERO_VALUE;
-    voicess[i].dacValues[PWM] =         PWM_MIN_VALUE;
-    voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;
-    voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;
-    voicess[i].dacValues[CUTOFF] =      CUTOFF_ZERO_VALUE;
-    voicess[i].dacValues[VCA] =         VCA_MIN_VALUE;
+    voicess[i].dacValues[CUTOFF] =      CUTOFF_MAX_VALUE;     //   0..7000,   // Cutoff
+    voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;  //   0..2500,   // Resonance
+    voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;      //   0..4000,   // Mixer Balance
+    voicess[i].dacValues[VCA] =         VCA_MIN_VALUE;        //   0..4200    // VCA
+    voicess[i].dacValues[PWM] =         PWM_MIN_VALUE;        //   0..2300,   // PWM
+    voicess[i].dacValues[CV] =          CV_ZERO_VALUE;        //   0..8192,   // Key CV
+    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_ZERO_VALUE;      //   0..4500,   // Wave Select
+    voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;    //   0..4000,   // Mod Amount
   }
 }
 
@@ -1295,125 +1363,103 @@ void processSerialInput(char rx_byte) {
       voicess[selectedVoice].gate == NOTE_ON ? voiceNoteOff(selectedVoice, note, 80) : voiceNoteOn(selectedVoice, note, 80);
     }
     break;
-    case 113: {
-      if(voicess[selectedVoice].dacValues[CV] + 72 >= CV_MAX_VALUE)
-        voicess[selectedVoice].dacValues[CV] = CV_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[CV] = voicess[selectedVoice].dacValues[CV] + 72;
+    case 113: { // q
+      voicess[selectedVoice].dacValues[CV] = constrain(voicess[selectedVoice].dacValues[CV] + 62,
+                                                       CV_MIN_VALUE,
+                                                       CV_MAX_VALUE);
     }
     break;
-    case 97: {
-      if(voicess[selectedVoice].dacValues[CV] < 72)
-        voicess[selectedVoice].dacValues[CV] = 0;
-      else
-        voicess[selectedVoice].dacValues[CV] = voicess[selectedVoice].dacValues[CV] - 72;
+    case 97: { // a
+      voicess[selectedVoice].dacValues[CV] = constrain(voicess[selectedVoice].dacValues[CV] - 62,
+                                                       CV_MIN_VALUE,
+                                                       CV_MAX_VALUE);
     }
     break;
-    case 119: {
-      if(voicess[selectedVoice].dacValues[MOD_AMT] + 25 >= MOD_AMT_MAX_VALUE)
-        voicess[selectedVoice].dacValues[MOD_AMT] = MOD_AMT_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[MOD_AMT] = voicess[selectedVoice].dacValues[MOD_AMT] + 25;
+    case 119: { // w
+      voicess[selectedVoice].dacValues[MOD_AMT] = constrain(voicess[selectedVoice].dacValues[MOD_AMT] + 25,
+                                                            MOD_AMT_MIN_VALUE,
+                                                            MOD_AMT_MAX_VALUE);
     }
     break;
-    case 115: {
-      if(voicess[selectedVoice].dacValues[MOD_AMT] < 25)
-        voicess[selectedVoice].dacValues[MOD_AMT] = 0;
-      else
-      voicess[selectedVoice].dacValues[MOD_AMT] = voicess[selectedVoice].dacValues[MOD_AMT] - 25;
+    case 115: { // s
+      voicess[selectedVoice].dacValues[MOD_AMT] = constrain(voicess[selectedVoice].dacValues[MOD_AMT] - 25,
+                                                            MOD_AMT_MIN_VALUE,
+                                                            MOD_AMT_MAX_VALUE);
     }
     break;
-    case 101: {
-      if(voicess[selectedVoice].dacValues[WAVE_SELECT] + 25 >= WAVE_SELECT_MAX_VALUE)
-        voicess[selectedVoice].dacValues[WAVE_SELECT] = WAVE_SELECT_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[WAVE_SELECT] = voicess[selectedVoice].dacValues[WAVE_SELECT] + 25;
+    case 101: { // e
+      voicess[selectedVoice].dacValues[WAVE_SELECT] = constrain(voicess[selectedVoice].dacValues[WAVE_SELECT] + 25,
+                                                                WAVE_SELECT_MIN_VALUE,
+                                                                WAVE_SELECT_MAX_VALUE);
     }
     break;
-    case 100: {
-      if(voicess[selectedVoice].dacValues[WAVE_SELECT] < 25)
-        voicess[selectedVoice].dacValues[WAVE_SELECT] = 0;
-      else
-        voicess[selectedVoice].dacValues[WAVE_SELECT] = voicess[selectedVoice].dacValues[WAVE_SELECT] - 25;
-      }
-    break;
-
-    case 114: {
-      if(voicess[selectedVoice].dacValues[PWM] + 25 >= PWM_MAX_VALUE)
-        voicess[selectedVoice].dacValues[PWM] = PWM_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[PWM] = voicess[selectedVoice].dacValues[PWM] + 25;
+    case 100: { // d
+      voicess[selectedVoice].dacValues[WAVE_SELECT] = constrain(voicess[selectedVoice].dacValues[WAVE_SELECT] - 25,
+                                                                WAVE_SELECT_MIN_VALUE,
+                                                                WAVE_SELECT_MAX_VALUE);
     }
     break;
-    case 102: {
-      if(voicess[selectedVoice].dacValues[PWM] < PWM_MIN_VALUE + 25)
-        voicess[selectedVoice].dacValues[PWM] = PWM_MIN_VALUE;
-      else
-        voicess[selectedVoice].dacValues[PWM] = voicess[selectedVoice].dacValues[PWM] - 25;
-      }
-      break;
-
-    case 116: {
-      if(voicess[selectedVoice].dacValues[MIXER] + 25 >= MIXER_MAX_VALUE)
-        voicess[selectedVoice].dacValues[MIXER] = MIXER_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[MIXER] = voicess[selectedVoice].dacValues[MIXER] + 25;
+    case 114: { // r
+      voicess[selectedVoice].dacValues[PWM] = constrain(voicess[selectedVoice].dacValues[PWM] + 25,
+                                                        PWM_MIN_VALUE,
+                                                        PWM_MAX_VALUE);
     }
     break;
-    case 103: {
-      if(voicess[selectedVoice].dacValues[MIXER] < 25)
-        voicess[selectedVoice].dacValues[MIXER] = 0;
-      else
-        voicess[selectedVoice].dacValues[MIXER] = voicess[selectedVoice].dacValues[MIXER] - 25;
-      }
-      break;
-
-    case 121: {
-      if(voicess[selectedVoice].dacValues[CUTOFF] + 25 >= CUTOFF_MAX_VALUE)
-        voicess[selectedVoice].dacValues[CUTOFF] = CUTOFF_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[CUTOFF] = voicess[selectedVoice].dacValues[CUTOFF] + 25;
-      }
-      break;
-    case 104: {
-      if(voicess[selectedVoice].dacValues[CUTOFF] < 25)
-        voicess[selectedVoice].dacValues[CUTOFF] = 0;
-      else
-        voicess[selectedVoice].dacValues[CUTOFF] = voicess[selectedVoice].dacValues[CUTOFF] - 25;
-      }
-      break;
-
-    case 117: {
-      if(voicess[selectedVoice].dacValues[RESONANCE] + 25 >= RESONANCE_MAX_VALUE)
-        voicess[selectedVoice].dacValues[RESONANCE] = RESONANCE_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[RESONANCE] = voicess[selectedVoice].dacValues[RESONANCE] + 25;
-      }
-      break;
-    case 106: {
-      if(voicess[selectedVoice].dacValues[RESONANCE] < 25)
-        voicess[selectedVoice].dacValues[RESONANCE] = 0;
-      else
-        voicess[selectedVoice].dacValues[RESONANCE] = voicess[selectedVoice].dacValues[RESONANCE] - 25;
-      }
-      break;
-
-    case 105: {
-      if(voicess[selectedVoice].dacValues[VCA] + 25 >= VCA_MAX_VALUE)
-        voicess[selectedVoice].dacValues[VCA] = VCA_MAX_VALUE;
-      else
-        voicess[selectedVoice].dacValues[VCA] = voicess[selectedVoice].dacValues[VCA] + 25;
-      }
-      break;
-    case 107: {
-      if(voicess[selectedVoice].dacValues[VCA] < 25)
-        voicess[selectedVoice].dacValues[VCA] = 0;
-      else
-        voicess[selectedVoice].dacValues[VCA] = voicess[selectedVoice].dacValues[VCA] - 25;
-      }
-      break;
-
-    case 122: {
+    case 102: { // f
+      voicess[selectedVoice].dacValues[PWM] = constrain(voicess[selectedVoice].dacValues[PWM] - 25,
+                                                        PWM_MIN_VALUE,
+                                                        PWM_MAX_VALUE);
+    }
+    break;
+    case 116: { // t
+      voicess[selectedVoice].dacValues[MIXER] = constrain(voicess[selectedVoice].dacValues[MIXER] + 25,
+                                                MIXER_MIN_VALUE,
+                                                MIXER_MAX_VALUE);
+    }
+    break;
+    case 103: { // g
+      voicess[selectedVoice].dacValues[MIXER] = constrain(voicess[selectedVoice].dacValues[MIXER] - 25,
+                                                MIXER_MIN_VALUE,
+                                                MIXER_MAX_VALUE);
+    }
+    break;
+    case 121: { // y
+      voicess[selectedVoice].dacValues[CUTOFF] = constrain(voicess[selectedVoice].dacValues[CUTOFF] + 25,
+                                                           CUTOFF_MIN_VALUE,
+                                                           CUTOFF_MAX_VALUE);
+    }
+    break;
+    case 104: { // h
+      voicess[selectedVoice].dacValues[CUTOFF] = constrain(voicess[selectedVoice].dacValues[CUTOFF] - 25,
+                                                           CUTOFF_MIN_VALUE,
+                                                           CUTOFF_MAX_VALUE);
+    }
+    break;
+    case 117: { // u
+      voicess[selectedVoice].dacValues[RESONANCE] = constrain(voicess[selectedVoice].dacValues[RESONANCE] + 25,
+                                                              RESONANCE_MIN_VALUE,
+                                                              RESONANCE_MAX_VALUE);
+    }
+    break;
+    case 106: { // j
+      voicess[selectedVoice].dacValues[RESONANCE] = constrain(voicess[selectedVoice].dacValues[RESONANCE] - 25,
+                                                              RESONANCE_MIN_VALUE,
+                                                              RESONANCE_MAX_VALUE);
+    }
+    break;
+    case 105: { // i
+      voicess[selectedVoice].dacValues[VCA] = constrain(voicess[selectedVoice].dacValues[VCA] + 25,
+                                                        VCA_MIN_VALUE,
+                                                        VCA_MAX_VALUE);
+    }
+    break;
+    case 107: { // k
+      voicess[selectedVoice].dacValues[VCA] = constrain(voicess[selectedVoice].dacValues[VCA] + 25,
+                                                        VCA_MIN_VALUE,
+                                                        VCA_MAX_VALUE);
+    }
+    break;
+    case 122: { // z
         panic(); // zero DAC
       }
       break;

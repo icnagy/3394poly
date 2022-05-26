@@ -262,16 +262,16 @@ MP4922 pin 14 Vouta / 10k / Opamp Inverting input / 4051 pin 3
 
 ## Multiplex order
 
-| Order | CV          | Range        | Misc                                        |
-|-------|-------------|--------------|---------------------------------------------|
-| 1.    | CUTOFF      | -3 .. +4 V   | -3V 24kHz => 4 0Hz (3/8V per octave)        |
-| 2.    | RESONANCE   |  0 .. +2.5 V |                                             |
-| 3.    | MIXER       | -2 .. +2 V   | -2 VCA2 1.72 VCA1                           |
-| 4.    | VCA         |  0 .. +4.3 V |                                             |
-| 5.    | PWM         |  0 .. +2.2 V |                                             |
-| 6.    | PITCH       | -4 .. +4 V   | V/Octave                                    |
-| 7.    | WAVE_SELECT | -2 .. +4 V   | -2 SQR -0.3 TRI +1.25 TRI + SAW +2.7 SAW 4V |
-| 8.    | MOD_AMOUNT  |  0 .. +4 V   |                                             |
+| Order | CV          | Range        | DAC Values | Misc                                        |
+|-------|-------------|--------------|------------|---------------------------------------------|
+| 1.    | CUTOFF      | -3 .. +4 V   | 0..7000    | -3V 24kHz => 4 0Hz (3/8V per octave)        |
+| 2.    | RESONANCE   |  0 .. +2.5 V | 0..2500    |                                             |
+| 3.    | MIXER       | -2 .. +2 V   | 0..4000    | -2 VCA2 1.72 VCA1                           |
+| 4.    | VCA         |  0 .. +4.3 V | 0..4200    |                                             |
+| 5.    | PWM         |  0 .. +2.2 V | 0..2300    |                                             |
+| 6.    | PITCH       | -4 .. +4 V   | 0..8192    | 3/4V per octave                                    |
+| 7.    | WAVE_SELECT | -2 .. +4 V   | 0..4500    | -2 SQR -0.3 TRI +1.25 TRI + SAW +2.7 SAW 4V |
+| 8.    | MOD_AMOUNT  |  0 .. +4 V   | 0..4000    |                                             |
 
 ### Inverse bits
 
@@ -306,4 +306,48 @@ avr-gdb -se ./build/sketch_nov30a.ino.elf
 target remote :1234
 b loop
 c
+```
+
+## Generating exponential curves for control values:
+
+Let generate exponential values between 0...MAX_DAC_VALUE in Y steps:
+
+  `e^(Y/x) = MAX_DAC_VALUE`
+
+```ruby
+# Example for exponential cutoff values
+max_dac_value = 7000
+number_of_steps = 128
+
+numerator = number_of_steps / Math.log(max_dac_value)
+
+(0..number_of_steps).map { |x| Math.exp(x / numerator).to_i }
+
+# =>
+[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6,
+ 6, 6, 7, 7, 8, 9, 9, 10, 11, 12, 12, 13, 14, 15, 17, 18, 19, 20, 22, 24, 25, 27,
+ 29, 31, 34, 36, 39, 41, 44, 48, 51, 55, 59, 63, 67, 72, 78, 83, 89, 96, 102, 110,
+ 118, 126, 135, 145, 155, 167, 179, 191, 205, 220, 236, 253, 271, 290, 311, 333,
+ 357, 383, 410, 440, 471, 505, 541, 580, 621, 666, 714, 765, 820, 878, 941, 1009,
+ 1081, 1158, 1241, 1330, 1426, 1528, 1637, 1755, 1880, 2015, 2159, 2314, 2480, 2657,
+ 2848, 3052, 3270, 3505, 3756, 4025, 4313, 4622, 4953, 5308, 5688, 6095, 6532, 6999]
+```
+
+```ruby
+# Example for exponential VCA values
+max_dac_value = 4300
+number_of_steps = 128
+
+numerator = number_of_steps / Math.log(max_dac_value)
+
+(0..number_of_steps).map { |x| Math.exp(x / numerator).to_i }
+
+# =>
+[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5,
+ 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 11, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 23, 24,
+ 26, 28, 29, 31, 34, 36, 38, 41, 44, 47, 50, 53, 57, 61, 65, 70, 74, 79, 85, 90,
+ 97, 103, 110, 118, 126, 134, 143, 153, 163, 174, 186, 199, 212, 227, 242, 258,
+ 276, 294, 314, 336, 358, 382, 408, 436, 465, 497, 531, 566, 605, 646, 689, 736,
+ 785, 839, 895, 956, 1020, 1089, 1163, 1242, 1325, 1415, 1511, 1613, 1722, 1838,
+ 1962, 2095, 2236, 2387, 2549, 2721, 2905, 3101, 3310, 3534, 3773, 4027, 4300]
 ```
