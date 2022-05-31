@@ -310,6 +310,8 @@ c
 
 ## Generating exponential curves for control values:
 
+Midi controller values usually range from 0..127. Some voice shaping features are better controlled with an "exponential" control. So we should map 0..127 to the control voltage DAC range, which is always starts at 0.
+
 Let generate exponential values between 0...MAX_DAC_VALUE in Y steps:
 
   `e^(Y/x) = MAX_DAC_VALUE`
@@ -351,3 +353,7 @@ numerator = number_of_steps / Math.log(max_dac_value)
  785, 839, 895, 956, 1020, 1089, 1163, 1242, 1325, 1415, 1511, 1613, 1722, 1838,
  1962, 2095, 2236, 2387, 2549, 2721, 2905, 3101, 3310, 3534, 3773, 4027, 4300]
 ```
+
+## PWM and WAVE SELECT
+
+From experiments it seems that the PWM needs to be set to 0 when the waveform is other than square, otherwise it distorts the waveform (ie. unexpected behaviour). Though it could be used as a voice shaping feature.
