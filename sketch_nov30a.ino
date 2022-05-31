@@ -49,15 +49,15 @@ enum DAC_PARAM {
 // VCA: 2975
 
 #define CUTOFF                0     // Order in multiplexer
-#define CUTOFF_GAIN_LOW       3000  // Where to set the OPAMPs gain when the CV is below 0V
-#define CUTOFF_GAIN_THRESHOLD 3000  // After which DAC value to switch over to the other gain
+#define CUTOFF_GAIN_LOW       1600  // Where to set the OPAMPs gain when the CV is below 0V
+#define CUTOFF_GAIN_THRESHOLD 1600  // After which DAC value to switch over to the other gain
 #define CUTOFF_GAIN_HIGH      0     // Where to set the OPAMPs gain when the CV is above 0V
 #define CUTOFF_MIN_VALUE      0     // The smallest DAC value for this CV
-#define CUTOFF_MAX_VALUE      7000  // The largest DAC value for this CV
-#define CUTOFF_ZERO_VALUE     3000  // Where to reset this CV value
+#define CUTOFF_MAX_VALUE      5600  // The largest DAC value for this CV
+#define CUTOFF_ZERO_VALUE     500   // Where to reset this CV value
 // -3 .. +4 V
-// 3/8V per octave
-// -3V  24kHz => 4V 0 Hz (Inverted)
+// -3/8V per octave => -0.375V per octave
+// -1.6V  24kHz => 4V 0 Hz (Inverted)
 
 #define RESONANCE           1       // Order in multiplexer
 #define RESONANCE_GAIN      0       // Where to set the OPAMPs gain for this CV
@@ -76,13 +76,14 @@ enum DAC_PARAM {
 #define VCA_GAIN       0            // Where to set the OPAMPs gain for this CV
 #define VCA_MIN_VALUE  0            // The smallest DAC value for this CV
 #define VCA_MAX_VALUE  4200         // The largest DAC value for this CV
-#define VCA_ZERO_VALUE 2000         // The largest DAC value for this CV
+#define VCA_ZERO_VALUE 2000         // The default DAC value for this CV
 // 0 .. +4.3 V
 
-#define PWM           4             // Order in multiplexer
-#define PWM_GAIN      100           // Where to set the OPAMPs gain for this CV
-#define PWM_MIN_VALUE 0             // The smallest DAC value for this CV
-#define PWM_MAX_VALUE 2300          // The largest DAC value for this CV
+#define PWM            4            // Order in multiplexer
+#define PWM_GAIN       0            // Where to set the OPAMPs gain for this CV
+#define PWM_MIN_VALUE  0            // The smallest DAC value for this CV
+#define PWM_MAX_VALUE  2200         // The largest DAC value for this CV
+#define PWM_ZERO_VALUE 1100         // The default DAC value for this CV
 // 0 .. +2.2 V
 // Needs to be/Can be set to a slightly negative CV to stop the SAW PWM
 
@@ -202,10 +203,21 @@ typedef struct voice_structure {
   uint8_t gate;
   uint8_t note;
   uint8_t velocity;
-  uint8_t vco_shape = 0;
+  uint8_t vco_shape;
+  uint16_t square_pwm = PWM_ZERO_VALUE;
+  uint16_t other_pwm = PWM_MIN_VALUE;
+  uint8_t autotune_errors[8];
 } voice;
 
 voice voicess[6];
+
+enum VCO_SHAPE {
+  VCO_SHAPE_SQR,
+  VCO_SHAPE_TRI,
+  VCO_SHAPE_TRI_SAW,
+  VCO_SHAPE_SAW,
+  VCO_SHAPE_LAST
+};
 
 uint16_t vco_shapes[4] = {
   WAVE_SELECT_SQR,
@@ -235,23 +247,24 @@ void (*updateVoiceParam[8])(voice *) = {
 };
 
 uint16_t exp_vcf_lookup[128] = {
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6,
-  6, 6, 7, 7, 8, 9, 9, 10, 11, 12, 12, 13, 14, 15, 17, 18, 19, 20, 22, 24, 25, 27,
-  29, 31, 34, 36, 39, 41, 44, 48, 51, 55, 59, 63, 67, 72, 78, 83, 89, 96, 102, 110,
-  118, 126, 135, 145, 155, 167, 179, 191, 205, 220, 236, 253, 271, 290, 311, 333,
-  357, 383, 410, 440, 471, 505, 541, 580, 621, 666, 714, 765, 820, 878, 941, 1009,
-  1081, 1158, 1241, 1330, 1426, 1528, 1637, 1755, 1880, 2015, 2159, 2314, 2480, 2657,
-  2848, 3052, 3270, 3505, 3756, 4025, 4313, 4622, 4953, 5308, 5688, 6095, 6532, 6999
+  6532, 6095, 5688, 5308, 4953, 4622, 4313, 4025, 3756, 3505, 3270, 3052, 2848,
+  2657, 2480, 2314, 2159, 2015, 1880, 1755, 1637, 1528, 1426, 1330, 1241, 1158,
+  1081, 1009, 941, 878, 820, 765, 714, 666, 621, 580, 541, 505, 471, 440, 410,
+  383, 357, 333, 311, 290, 271, 253, 236, 220, 205, 191, 179, 167, 155, 145, 135,
+  126, 118, 110, 102, 96, 89, 83, 78, 72, 67, 63, 59, 55, 51, 48, 44, 41, 39, 36,
+  34, 31, 29, 27, 25, 24, 22, 20, 19, 18, 17, 15, 14, 13, 12, 12, 11, 10, 9, 9, 8,
+  7, 7, 6, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1
 };
 
 uint16_t exp_vca_lookup[128] = {
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5,
-  5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 11, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 23, 24,
-  26, 28, 29, 31, 34, 36, 38, 41, 44, 47, 50, 53, 57, 61, 65, 70, 74, 79, 85, 90,
-  97, 103, 110, 118, 126, 134, 143, 153, 163, 174, 186, 199, 212, 227, 242, 258,
-  276, 294, 314, 336, 358, 382, 408, 436, 465, 497, 531, 566, 605, 646, 689, 736,
-  785, 839, 895, 956, 1020, 1089, 1163, 1242, 1325, 1415, 1511, 1613, 1722, 1838,
-  1962, 2095, 2236, 2387, 2549, 2721, 2905, 3101, 3310, 3534, 3773, 4027, 4300
+  4027, 3773, 3534, 3310, 3101, 2905, 2721, 2549, 2387, 2236, 2095, 1962, 1838,
+  1722, 1613, 1511, 1415, 1325, 1242, 1163, 1089, 1020, 956, 895, 839, 785, 736,
+  689, 646, 605, 566, 531, 497, 465, 436, 408, 382, 358, 336, 314, 294, 276, 258,
+  242, 227, 212, 199, 186, 174, 163, 153, 143, 134, 126, 118, 110, 103, 97, 90,
+  85, 79, 74, 70, 65, 61, 57, 53, 50, 47, 44, 41, 38, 36, 34, 31, 29, 28, 26, 24,
+  23, 21, 20, 18, 17, 16, 15, 14, 13, 12, 11, 11, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5,
+  5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 };
 
 // Values to map from CC
@@ -590,7 +603,10 @@ int findIdleVoice() {
 void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].gate = NOTE_ON;
   voicess[voiceNo].note = note;
-  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note), CV_MIN_VALUE, CV_MAX_VALUE);
+  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note),
+                                             CV_MIN_VALUE,
+                                             CV_MAX_VALUE);
+  // Pluss add all pitch changing values (ie: coarse, fine tune)
 #ifdef DISPLAY_MIDI_DATA
   Serial.println(voicess[voiceNo].dacValues[CV]);
 #endif
@@ -766,12 +782,13 @@ void setup() {
   Serial.begin(31250); // MIDI?
   Serial.println("Hello world");
 #ifndef DAC_TEST
+#ifndef USE_KEYBOARD
   miby_init( &m, NULL );
-
+#endif // USE_KEYBOARD
   panic();
 
   initializeInterrupts();
-#endif
+#endif // DAC_TEST
 
   preMainLoop = 0;
 
@@ -849,7 +866,7 @@ void panic() {
     voicess[i].dacValues[VCA] =         VCA_ZERO_VALUE;         //   0..4200    // VCA
     voicess[i].dacValues[PWM] =         PWM_ZERO_VALUE;         //   0..2300,   // PWM
     voicess[i].dacValues[CV] =          CV_ZERO_VALUE;          //   0..8192,   // Key CV
-    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_TRI;        //   0..4500,   // Wave Select
+    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_SQR;        //   0..4500,   // Wave Select
     voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;      //   0..4000,   // Mod Amount
   }
 }
@@ -1219,7 +1236,9 @@ void test_sysex( miby_this_t sss )
   MIBY_SYSEX_DONE_OK(sss);
 }
 #ifdef USE_KEYBOARD
-uint8_t selectedVoice = 0;
+
+uint8_t selectedVoiceNumber = 0;
+voice *selectedVoice;
 
 void processSerialInput(char rx_byte) {
   switch(rx_byte){
@@ -1230,102 +1249,138 @@ void processSerialInput(char rx_byte) {
     case 53:
     case 54: {
       uint8_t note = 49;
-      selectedVoice = rx_byte - 49;
-      voicess[selectedVoice].gate == NOTE_ON ? voiceNoteOff(selectedVoice, note, 80) : voiceNoteOn(selectedVoice, note, 80);
+      selectedVoiceNumber = rx_byte - 49;
+      selectedVoice = &voicess[rx_byte - 49];
+      voicess[selectedVoiceNumber].gate == NOTE_ON ? voiceNoteOff(selectedVoiceNumber, note, 80) : voiceNoteOn(selectedVoiceNumber, note, 80);
     }
     break;
+    // PITCH
     case 113: { // q
-      voicess[selectedVoice].dacValues[CV] = constrain(voicess[selectedVoice].dacValues[CV] + 62,
+      voicess[selectedVoiceNumber].dacValues[CV] = constrain(voicess[selectedVoiceNumber].dacValues[CV] + 62,
                                                        CV_MIN_VALUE,
                                                        CV_MAX_VALUE);
     }
     break;
     case 97: { // a
-      voicess[selectedVoice].dacValues[CV] = constrain(voicess[selectedVoice].dacValues[CV] - 62,
+      voicess[selectedVoiceNumber].dacValues[CV] = constrain(voicess[selectedVoiceNumber].dacValues[CV] - 62,
                                                        CV_MIN_VALUE,
                                                        CV_MAX_VALUE);
     }
     break;
+    // MOD
     case 119: { // w
-      voicess[selectedVoice].dacValues[MOD_AMT] = constrain(voicess[selectedVoice].dacValues[MOD_AMT] + 25,
+      voicess[selectedVoiceNumber].dacValues[MOD_AMT] = constrain(voicess[selectedVoiceNumber].dacValues[MOD_AMT] + 25,
                                                             MOD_AMT_MIN_VALUE,
                                                             MOD_AMT_MAX_VALUE);
     }
     break;
     case 115: { // s
-      voicess[selectedVoice].dacValues[MOD_AMT] = constrain(voicess[selectedVoice].dacValues[MOD_AMT] - 25,
+      voicess[selectedVoiceNumber].dacValues[MOD_AMT] = constrain(voicess[selectedVoiceNumber].dacValues[MOD_AMT] - 25,
                                                             MOD_AMT_MIN_VALUE,
                                                             MOD_AMT_MAX_VALUE);
     }
     break;
+    // WAVE
+    // When switching between SQR and other wave shapes, the PWM value needs to be swapped as well
     case 101: { // e
-      voicess[selectedVoice].dacValues[WAVE_SELECT] = constrain(voicess[selectedVoice].dacValues[WAVE_SELECT] + 25,
-                                                                WAVE_SELECT_MIN_VALUE,
-                                                                WAVE_SELECT_MAX_VALUE);
+      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
+        voicess[selectedVoiceNumber].square_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      } else {
+        voicess[selectedVoiceNumber].other_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      }
+
+      voicess[selectedVoiceNumber].vco_shape = constrain(voicess[selectedVoiceNumber].vco_shape + 1,
+                                                   VCO_SHAPE_SQR,
+                                                   VCO_SHAPE_SAW);
+      voicess[selectedVoiceNumber].dacValues[WAVE_SELECT] = vco_shapes[voicess[selectedVoiceNumber].vco_shape];
+
+      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
+         voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].square_pwm;
+      } else {
+        voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].other_pwm;
+      }
     }
     break;
     case 100: { // d
-      voicess[selectedVoice].dacValues[WAVE_SELECT] = constrain(voicess[selectedVoice].dacValues[WAVE_SELECT] - 25,
-                                                                WAVE_SELECT_MIN_VALUE,
-                                                                WAVE_SELECT_MAX_VALUE);
+      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
+        voicess[selectedVoiceNumber].square_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      } else {
+        voicess[selectedVoiceNumber].other_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      }
+
+      voicess[selectedVoiceNumber].vco_shape = constrain(voicess[selectedVoiceNumber].vco_shape - 1,
+                                                   VCO_SHAPE_SQR,
+                                                   VCO_SHAPE_SAW);
+      voicess[selectedVoiceNumber].dacValues[WAVE_SELECT] = vco_shapes[voicess[selectedVoiceNumber].vco_shape];
+
+      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
+         voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].square_pwm;
+      } else {
+        voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].other_pwm;
+      }
     }
     break;
+    // PWM
     case 114: { // r
-      voicess[selectedVoice].dacValues[PWM] = constrain(voicess[selectedVoice].dacValues[PWM] + 25,
+      voicess[selectedVoiceNumber].dacValues[PWM] = constrain(voicess[selectedVoiceNumber].dacValues[PWM] + 25,
                                                         PWM_MIN_VALUE,
                                                         PWM_MAX_VALUE);
     }
     break;
     case 102: { // f
-      voicess[selectedVoice].dacValues[PWM] = constrain(voicess[selectedVoice].dacValues[PWM] - 25,
+      voicess[selectedVoiceNumber].dacValues[PWM] = constrain(voicess[selectedVoiceNumber].dacValues[PWM] - 25,
                                                         PWM_MIN_VALUE,
                                                         PWM_MAX_VALUE);
     }
     break;
+    // MIXER
     case 116: { // t
-      voicess[selectedVoice].dacValues[MIXER] = constrain(voicess[selectedVoice].dacValues[MIXER] + 25,
+      voicess[selectedVoiceNumber].dacValues[MIXER] = constrain(voicess[selectedVoiceNumber].dacValues[MIXER] + 25,
                                                 MIXER_MIN_VALUE,
                                                 MIXER_MAX_VALUE);
     }
     break;
     case 103: { // g
-      voicess[selectedVoice].dacValues[MIXER] = constrain(voicess[selectedVoice].dacValues[MIXER] - 25,
+      voicess[selectedVoiceNumber].dacValues[MIXER] = constrain(voicess[selectedVoiceNumber].dacValues[MIXER] - 25,
                                                 MIXER_MIN_VALUE,
                                                 MIXER_MAX_VALUE);
     }
     break;
+    // CUTOFF
     case 121: { // y
-      voicess[selectedVoice].dacValues[CUTOFF] = constrain(voicess[selectedVoice].dacValues[CUTOFF] + 25,
+      voicess[selectedVoiceNumber].dacValues[CUTOFF] = constrain(voicess[selectedVoiceNumber].dacValues[CUTOFF] + 25,
                                                            CUTOFF_MIN_VALUE,
                                                            CUTOFF_MAX_VALUE);
     }
     break;
     case 104: { // h
-      voicess[selectedVoice].dacValues[CUTOFF] = constrain(voicess[selectedVoice].dacValues[CUTOFF] - 25,
+      voicess[selectedVoiceNumber].dacValues[CUTOFF] = constrain(voicess[selectedVoiceNumber].dacValues[CUTOFF] - 25,
                                                            CUTOFF_MIN_VALUE,
                                                            CUTOFF_MAX_VALUE);
     }
     break;
+    // RESONANCE
     case 117: { // u
-      voicess[selectedVoice].dacValues[RESONANCE] = constrain(voicess[selectedVoice].dacValues[RESONANCE] + 25,
+      voicess[selectedVoiceNumber].dacValues[RESONANCE] = constrain(voicess[selectedVoiceNumber].dacValues[RESONANCE] + 25,
                                                               RESONANCE_MIN_VALUE,
                                                               RESONANCE_MAX_VALUE);
     }
     break;
     case 106: { // j
-      voicess[selectedVoice].dacValues[RESONANCE] = constrain(voicess[selectedVoice].dacValues[RESONANCE] - 25,
+      voicess[selectedVoiceNumber].dacValues[RESONANCE] = constrain(voicess[selectedVoiceNumber].dacValues[RESONANCE] - 25,
                                                               RESONANCE_MIN_VALUE,
                                                               RESONANCE_MAX_VALUE);
     }
     break;
+    // VCA
     case 105: { // i
-      voicess[selectedVoice].dacValues[VCA] = constrain(voicess[selectedVoice].dacValues[VCA] + 25,
+      voicess[selectedVoiceNumber].dacValues[VCA] = constrain(voicess[selectedVoiceNumber].dacValues[VCA] + 25,
                                                         VCA_MIN_VALUE,
                                                         VCA_MAX_VALUE);
     }
     break;
     case 107: { // k
-      voicess[selectedVoice].dacValues[VCA] = constrain(voicess[selectedVoice].dacValues[VCA] - 25,
+      voicess[selectedVoiceNumber].dacValues[VCA] = constrain(voicess[selectedVoiceNumber].dacValues[VCA] - 25,
                                                         VCA_MIN_VALUE,
                                                         VCA_MAX_VALUE);
     }
@@ -1337,13 +1392,13 @@ void processSerialInput(char rx_byte) {
   }
 
   Serial.print("1/2/3");
-  Serial.print("\tCV: q/a");
-  Serial.print("\tMOD: w/s");
-  Serial.print("\tWAV: e/d");
-  Serial.print("\tPWM: r/f");
-  Serial.print("\tMIX: t/g");
-  Serial.print("\tVCF: y/h");
-  Serial.print("\tRES: u/j");
-  Serial.println("\tVCA: i/k");
+  Serial.print("  CV: q/a");
+  Serial.print("  MOD: w/s");
+  Serial.print("  WAV: e/d");
+  Serial.print("  PWM: r/f");
+  Serial.print("  MIX: t/g");
+  Serial.print("  VCF: y/h");
+  Serial.print("  RES: u/j");
+  Serial.println("  VCA: i/k");
 }
 #endif
