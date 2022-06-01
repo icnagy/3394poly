@@ -358,3 +358,131 @@ numerator = number_of_steps / Math.log(max_dac_value)
 ## PWM and WAVE SELECT
 
 From experiments it seems that the PWM needs to be set to 0 when the waveform is other than square, otherwise it distorts the waveform (ie. unexpected behaviour). Though it could be used as a voice shaping feature.
+
+
+# Autotune
+
+## ATMega328 Analog comparator
+
+
+
+https://www.ee-diary.ga/2021/07/how-to-use-arduino-analog-comparator.html
+
+### Important Registers for Analog Comparator
+
+1. ACSR – Analog Comparator Control and Status Register
+
+2. DIDR1 – Digital Input Disable Register 1
+
+3. ADCSRB – ADC Control and Status RegisterB
+
+4. ADCSRA – ADC Control and Status Register A
+
+5. ADMUX – ADC Multiplexer Selection Register
+
+
+a. Normal operation
+
+In this type of operation of analog comparator, the signals are fed from external source into the AIN1 and AIN0 pins. In this type of operation, only the ACSR and DIDR1 are used.
+
+
+
+b. Different source for AIN0 and AIN1
+
+i) If bandgap reference voltage is to be used then ACSR is required. ACSR is also required to monitor the analog comparator output flag and enable/disable power and enable/disable analog comparator interrupt.
+
+ii) If external analog input source(A0 to A7) is to be used for negative input AIN1 then ADCSRA, ADCSRB and ADMUX registers are required.
+
+iii) In all cases if we want to save digital input buffer power then the DIDR1 is required.
+
+
+
+
+
+
+
+https://www.arnabkumardas.com/arduino-tutorial/analog-comparator/
+
+| ACME | ADEN | MUX2…0 | Analog Comparator Negative Input |
+|------|------|--------|----------------------------------|
+|   1  |   0  |   101  | ADC5                             |
+
+https://www.ee-diary.ga/2021/07/arduino-analog-comparator-with-interrupt.html
+
+```C
+uint8_t old_acsr;
+void setup () {
+  DIDR1 |= (1 << AIN0D) | // Disable Digital Inputs at AIN0 and AIN1
+           (1 << AIN1D);
+
+  ADCSRA &= ~(1 << ADEN); // Disable the ADC
+  ADCSRB |= (1 << ACME);  //Set ACME bit in ADCSRB to use external analog input
+                          // at AIN1 -ve input
+  ADMUX = 0x101;          //select A5 as input
+  old_acsr = ACSR;
+  ACSR = (0 << ACD)   |   // Analog Comparator: Enabled
+         (1 << ACBG)  |   // Set ACBG to use bandgap reference for +ve input
+         (0 << ACO)   |   // Analog Comparator Output: OFF
+         (1 << ACI)   |   // Analog Comparator Interrupt Flag:
+                          // Clear Pending Interrupt by  setting the bit
+         (1 << ACIE)  |   // Analog Comparator Interrupt: Enable
+         (0 << ACIC)  |   // Analog Comparator Input Capture: Disabled
+         (0 << ACIS1) |   // Analog Comparator Interrupt Mode:
+         (0 << ACIS0);    // Comparator Interrupt on Output Toggle
+
+  sei();
+}
+
+void loop() {
+}
+
+ISR(ANALOG_COMP_vect)
+{
+  if(ACSR & (1<<ACO))
+    PORTD |= (1<<PD4);
+  else
+    PORTD &= ~(1<<PD4);
+}
+```
+
+
+// https://openenergymonitor.github.io/forum-archive/node/2446.html
+// boolean FlagZeroDetec;
+// // Analog Comparator
+// DIDR1 = 0b00000011;       // AIN1D..AIN0D: AIN1, AIN0 Digital Input Disable, saves power
+// ACSR = (0<<ACD) |     // Analog Comparator: Enabled
+//        (0<<ACBG) |    // Analog Comparator Bandgap Select: AIN0 is the positive input of comparator
+//        (0<<ACO) |     // Analog Comparator Output: Off
+//        (1UL<<ACI)|    // Analog Comparator Interrupt Flag : Clear Pending Interrupt
+//        (1UL<<ACIE)|   // Analog Comparator Interrupt Enable
+//        //(1UL<<ACIC)|   // Analog Comparator Input Capture Enable on Timer/Counter1
+//        (0UL<<ACIS1)|  // --- Comparator Interrupt on Output Toggle.
+//        (0UL<<ACIS0);  // -/
+
+// ISR(ANALOG_COMP_vect)
+// {
+//   FlagZeroDetec=true;
+//   bitClear(ACSR,ACIE);
+// }
+// void loop()
+// {
+//     if(FlagZeroDetec == true) {
+//       digitalWrite(9,1);
+//       FlagZeroDetec = false;
+//       delay(1); // added by MR
+//       bitSet(ACSR,ACIE); // added by MR
+//     }
+//     digitalWrite(9,0);
+// }
+
+
+for(current_autotune_octave = 0; current_autotune_octave < 6; current_autotune_octave++) {
+  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+    voicess[i].dacValues = current_autotune_octave * CV_AUTOTUNE_OCTAVE;
+  }
+  for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
+    // Measure autotune errors
+    // voicess[i].autotune_errors[0] = 0;
+  }
+}
+
