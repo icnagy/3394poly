@@ -4,7 +4,9 @@
 
 // #define DISPLAY_MIDI_DATA
 // #define DISPLAY_VOICE_DATA
-// #define USE_KEYBOARD
+// #define DISPLAY_AUTOTUNE_INFO
+#define USE_KEYBOARD
+// #define DISABLE_ENVELOPES
 // #define DAC_TEST
 
 #define VREF 4096
@@ -206,7 +208,8 @@ typedef struct voice_structure {
   uint8_t vco_shape;
   uint16_t square_pwm = PWM_ZERO_VALUE;
   uint16_t other_pwm = PWM_MIN_VALUE;
-  uint8_t autotune_errors[8];
+  uint16_t frequency_at_zero_volt; // Simple frequency error at 0V
+  int8_t dac_offset;
 } voice;
 
 voice voicess[6];
@@ -603,7 +606,7 @@ int findIdleVoice() {
 void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
   voicess[voiceNo].gate = NOTE_ON;
   voicess[voiceNo].note = note;
-  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note),
+  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note) + voicess[voiceNo].dac_offset,
                                              CV_MIN_VALUE,
                                              CV_MAX_VALUE);
   // Pluss add all pitch changing values (ie: coarse, fine tune)
@@ -690,6 +693,7 @@ void initializeInterrupts() {
 }
 
 uint8_t preMainLoop = 1;
+uint8_t preAutotuneLoop = 1;
 uint8_t irq1Count = 0;
 uint16_t irq2Count = 0;
 
@@ -697,7 +701,7 @@ uint8_t notVoiceSelectTable[6] = { 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1F };
 #define DISABLE_MULTIPLEX 0x3F
 
 ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
-  if(preMainLoop)
+  if(preAutotuneLoop)
     return;
   uint8_t voiceNumber = 0;
   uint8_t voiceParamNumber = 0;
@@ -726,7 +730,7 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
   }
 }
 
-ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
+ISR(TIMER2_COMPA_vect) {                 // interrupt commands for TIMER 2 here
   if(preMainLoop)
     return;
   // Update Envelope
@@ -755,7 +759,10 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
     voicess[i].dacValues[RESONANCE] = (controlValues[CC_RESONANCE] << 4);
     voicess[i].dacValues[MOD_AMT] = (controlValues[CC_MODAMOUNT] << 4) + (controlValues[CC_MODAMOUNT] << 3) + (controlValues[CC_MODAMOUNT] << 1) + controlValues[CC_MODAMOUNT];
 
-    voicess[i].dacValues[VCA] = voicess[i].vca_envelope.value;
+#ifndef DISABLE_ENVELOPES
+    voicess[i].dacValues[CUTOFF] = voicess[i].vcf_envelope.value;
+    voicess[i].dacValues[VCA]    = voicess[i].vca_envelope.value;
+#endif // DISABLE_ENVELOPES
   }
 
   irq2Count++;
@@ -764,7 +771,37 @@ ISR(TIMER2_COMPA_vect){                 // interrupt commands for TIMER 2 here
   }
 }
 
+uint16_t zero_crossings;
 uint32_t lastMessageReceived = 0;
+
+ISR(ANALOG_COMP_vect)
+{
+  if(ACSR & (1 << ACO)){
+    zero_crossings++;
+  }
+}
+
+uint16_t getVoiceFrequency() {
+
+  uint16_t retValue = 0;
+  for(int calibration_run = 0;
+      calibration_run < 2;
+      calibration_run++) {
+
+    zero_crossings = 0;
+
+    lastMessageReceived = millis();
+    while((millis() - lastMessageReceived) < 500) {
+      ;
+    }
+
+    if(calibration_run == 1) { // throw away 1st(0)
+      retValue = zero_crossings;
+    }
+  }
+  return retValue;
+}
+
 
 miby_t m;
 
@@ -788,11 +825,113 @@ void setup() {
   panic();
 
   initializeInterrupts();
+
+  DIDR1 |= (1 << AIN0D) | // Disable Digital Inputs at AIN0 and AIN1
+           (1 << AIN1D);
+
+  ADCSRA &= ~(1 << ADEN); // Disable the ADC
+
+  ADCSRB |= (1 << ACME);  // Set ACME bit in ADCSRB to use external analog input
+                          // at AIN1 -ve input
+
+  ADMUX = (1 << REFS1) |
+          (1 << REFS0) |
+          0x4;            // select A4 as input
+
+  ACSR = (0 << ACD)   |   // Analog Comparator: Enabled
+         (1 << ACBG)  |   // Set ACBG to use bandgap reference for +ve input
+         (0 << ACO)   |   // Analog Comparator Output: OFF
+         (1 << ACI)   |   // Analog Comparator Interrupt Flag:
+                          // Clear Pending Interrupt by  setting the bit
+         (1 << ACIE)  |   // Analog Comparator Interrupt: Enable
+         (0 << ACIC)  |   // Analog Comparator Input Capture: Disabled
+         (0 << ACIS1) |   // Analog Comparator Interrupt Mode:
+         (0 << ACIS0);    // Comparator Interrupt on Output Toggle
+
+  sei();                                    // allow interrupts
+
+  preAutotuneLoop = 0;
+
+  for(int voiceNo = 0; voiceNo < 6; voiceNo++) {
+    // set up VCA to half way
+    voicess[voiceNo].dacValues[VCA] = 2975;
+    // for(int calibration_run = 0; calibration_run < 2; calibration_run++) {
+    //   zero_crossings = 0;
+    //   lastMessageReceived = millis();
+    //   while((millis() - lastMessageReceived) < 1000) {
+    //     ;
+    //   }
+    //   if(calibration_run == 1) { // throw away 1st(0)
+    //     Serial.print("voice:");
+    //     Serial.print(voiceNo);
+    //     Serial.print(" frequency:");
+    //     Serial.println(zero_crossings);
+    //     voicess[voiceNo].frequency_at_zero_volt = zero_crossings;
+    //   }
+    // }
+    voicess[voiceNo].frequency_at_zero_volt = getVoiceFrequency();
+
+    int8_t delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt; // -60
+    int8_t best_offset = 0;
+
+#ifdef DISPLAY_AUTOTUNE_INFO
+    Serial.print("voice: ");
+    Serial.print(voiceNo);
+    Serial.print(" frequency: ");
+    Serial.print(voicess[voiceNo].frequency_at_zero_volt);
+    Serial.print(" delta: ");
+    Serial.println(delta);
+#endif // DISPLAY_AUTOTUNE_INFO
+
+    if(voicess[voiceNo].frequency_at_zero_volt != 0 && delta !=0) {
+
+      for(int offset = -62; offset < 63; offset+=2) {
+
+        voicess[voiceNo].dac_offset = offset;
+        voicess[voiceNo].dacValues[CV] = CV_ZERO_VALUE + voicess[voiceNo].dac_offset; // Set new CV
+        voicess[voiceNo].frequency_at_zero_volt = getVoiceFrequency();                // Measure frequency
+
+#ifdef DISPLAY_AUTOTUNE_INFO
+        Serial.print("voice: ");
+        Serial.print(voiceNo);
+        Serial.print(" frequency: ");
+        Serial.print(voicess[voiceNo].frequency_at_zero_volt);
+        Serial.print(" diff: ");
+        Serial.print(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt));
+        Serial.print(" delta: ");
+        Serial.print(delta);
+        Serial.print(" comp: ");
+        Serial.print(abs(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt)) < abs(delta));
+        Serial.print(" best_offset: ");
+        Serial.println(best_offset);
+#endif // DISPLAY_AUTOTUNE_INFO
+
+        if( abs(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt)) < abs(delta) ) {
+          best_offset = voicess[voiceNo].dac_offset;
+          delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt;
+        }
+
+      }
+      voicess[voiceNo].dac_offset = best_offset;
+    }
+    voicess[voiceNo].dacValues[VCA] = VCA_MIN_VALUE;
+  }
+
 #endif // DAC_TEST
+
+  // Turn off analog comparator interrupt
+  ACSR = (0 << ACD)   |   // Analog Comparator: Enabled
+         (1 << ACBG)  |   // Set ACBG to use bandgap reference for +ve input
+         (0 << ACO)   |   // Analog Comparator Output: OFF
+         (1 << ACI)   |   // Analog Comparator Interrupt Flag:
+                          // Clear Pending Interrupt by  setting the bit
+         (0 << ACIE)  |   // Analog Comparator Interrupt: Enable
+         (0 << ACIC)  |   // Analog Comparator Input Capture: Disabled
+         (0 << ACIS1) |   // Analog Comparator Interrupt Mode:
+         (0 << ACIS0);    // Comparator Interrupt on Output Toggle
 
   preMainLoop = 0;
 
-  sei();                                    // allow interrupts
   lastMessageReceived = millis();
 }
 
@@ -835,9 +974,11 @@ void loop() {
 #endif
   }
 
-#ifdef DISPLAY_VOICE_DATA
   if(millis() - lastMessageReceived > 1000) {
     lastMessageReceived = millis();
+#ifdef DISPLAY_VOICE_DATA
+    Serial.println(irq1Count);
+    Serial.println(irq2Count);
     printVoiceDacValues(&voicess[0]);
     // printEnvelopeParams(&voicess[0]);
     // printVoiceDacValues(&voicess[1]);
@@ -845,9 +986,9 @@ void loop() {
     // printVoiceDacValues(&voicess[3]);
     // printVoiceDacValues(&voicess[4]);
     // printVoiceDacValues(&voicess[5]);
-    // Serial.println("------------------------------");
+    Serial.println("------------------------------");
+#endif // DISPLAY_VOICE_DATA
   }
-#endif
 #endif // DAC_TEST
 }
 
