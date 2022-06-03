@@ -4,7 +4,7 @@
 
 // #define DISPLAY_MIDI_DATA
 // #define DISPLAY_VOICE_DATA
-// #define DISPLAY_AUTOTUNE_INFO
+#define DISPLAY_AUTOTUNE_INFO
 #define USE_KEYBOARD
 // #define DISABLE_ENVELOPES
 // #define DAC_TEST
@@ -871,7 +871,7 @@ void setup() {
     // }
     voicess[voiceNo].frequency_at_zero_volt = getVoiceFrequency();
 
-    int8_t delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt; // -60
+    int8_t delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt;
     int8_t best_offset = 0;
 
 #ifdef DISPLAY_AUTOTUNE_INFO
@@ -884,8 +884,20 @@ void setup() {
 #endif // DISPLAY_AUTOTUNE_INFO
 
     if(voicess[voiceNo].frequency_at_zero_volt != 0 && delta !=0) {
+#define AUTOTUNE_STEP_SIZE 5
+      int offset_start = -1 * AUTOTUNE_STEP_SIZE * 30;
+      int offset_end = AUTOTUNE_STEP_SIZE * 30;
+      int offset_step = AUTOTUNE_STEP_SIZE;
 
-      for(int offset = -62; offset < 63; offset+=2) {
+      if(delta < 0) {
+        offset_start = AUTOTUNE_STEP_SIZE * 30;
+        offset_end = -1 * AUTOTUNE_STEP_SIZE * 30;
+        offset_step = -AUTOTUNE_STEP_SIZE;
+      }
+
+      for(int offset = offset_start;
+              offset != offset_end;
+              offset += offset_step) {
 
         voicess[voiceNo].dac_offset = offset;
         voicess[voiceNo].dacValues[CV] = CV_ZERO_VALUE + voicess[voiceNo].dac_offset; // Set new CV
@@ -894,13 +906,13 @@ void setup() {
 #ifdef DISPLAY_AUTOTUNE_INFO
         Serial.print("voice: ");
         Serial.print(voiceNo);
+        Serial.print(" offset: ");
+        Serial.print(offset);
         Serial.print(" frequency: ");
         Serial.print(voicess[voiceNo].frequency_at_zero_volt);
         Serial.print(" diff: ");
         Serial.print(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt));
-        Serial.print(" delta: ");
-        Serial.print(delta);
-        Serial.print(" comp: ");
+        Serial.print(" better: ");
         Serial.print(abs(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt)) < abs(delta));
         Serial.print(" best_offset: ");
         Serial.println(best_offset);
@@ -910,7 +922,10 @@ void setup() {
           best_offset = voicess[voiceNo].dac_offset;
           delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt;
         }
-
+        // Shortcut when offset goes up and frequency already below voice 0
+        // and when offset goes down and frequency already above voice 0
+        if(delta == 0)
+          break;
       }
       voicess[voiceNo].dac_offset = best_offset;
     }
