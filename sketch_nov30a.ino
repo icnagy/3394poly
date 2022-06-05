@@ -4,10 +4,14 @@
 
 // #define DISPLAY_MIDI_DATA
 // #define DISPLAY_VOICE_DATA
+
+#define DISPLAY_DAC_DATA
 #define DISPLAY_AUTOTUNE_INFO
 #define USE_KEYBOARD
+
 // #define DISABLE_ENVELOPES
 // #define DAC_TEST
+// #define  DISABLE_AUTOTUNE
 
 #define VREF 4096
 #define DAC_STEPS 4095
@@ -17,6 +21,9 @@
 
 #define NUMBER_OF_VOICES 6
 #define NUMBER_OF_PARAMS 8
+
+#define AUTOTUNE_STEP_SIZE 3
+#define AUTOTUNE_WIDTH 25
 
 #ifdef DAC_TEST
 
@@ -71,6 +78,8 @@ enum DAC_PARAM {
 #define MIXER_GAIN       2000       // Where to set the OPAMPs gain for this CV
 #define MIXER_MIN_VALUE  0          // The smallest DAC value for this CV VCA2 FULL VCA1 OFF
 #define MIXER_MAX_VALUE  4000       // The largest DAC value for this CV  VCA2 OFF  VCA1 FULL
+#define MIXER_VCO_MAX_VALUE  3000   // The DAC value where the VCO input is dominant
+#define MIXER_NOSIE_MAX_VALUE  1000 // The DAC value where the noise input is dominant
 #define MIXER_ZERO_VALUE 2000       // Where to reset this CV value       VCA2 -6dB VCA1 -6dB
 // -2 .. 2 V
 
@@ -78,7 +87,8 @@ enum DAC_PARAM {
 #define VCA_GAIN       0            // Where to set the OPAMPs gain for this CV
 #define VCA_MIN_VALUE  0            // The smallest DAC value for this CV
 #define VCA_MAX_VALUE  4200         // The largest DAC value for this CV
-#define VCA_ZERO_VALUE 2000         // The default DAC value for this CV
+#define VCA_AUTOTUNE_VALUE 3000     // VCA DAC value for autotune
+#define VCA_ZERO_VALUE 0            // The default DAC value for this CV
 // 0 .. +4.3 V
 
 #define PWM            4            // Order in multiplexer
@@ -95,7 +105,8 @@ enum DAC_PARAM {
 #define CV_GAIN_HIGH          0     // Where to set the OPAMPs gain when the CV is above 0V
 #define CV_MIN_VALUE          0     // The smallest DAC value for this CV
 #define CV_MAX_VALUE          8192  // The largest DAC value for this CV
-#define CV_ZERO_VALUE         4096  // Where to reset this CV value
+#define CV_ZERO_VALUE         4095  // Where to reset this CV value
+#define CV_AUTOTUNE_VALUE     3750  // Where to reset this CV value
 // -4 .. +4 V
 // 3/4V per octave => 0.750mV per octave
 // 0.750V/12 => 0.0625V => 62.5 DAC steps between two consecutive half note
@@ -162,6 +173,14 @@ typedef struct envelope_structure {
   uint16_t release_rate;
 } envelope;
 
+enum VCO_SHAPE {
+  VCO_SHAPE_SQR,
+  VCO_SHAPE_TRI,
+  VCO_SHAPE_TRI_SAW,
+  VCO_SHAPE_SAW,
+  VCO_SHAPE_LAST
+};
+
 typedef struct voice_structure {
   envelope_structure vca_envelope = {
     ENV_IDLE,          // state
@@ -202,25 +221,17 @@ typedef struct voice_structure {
     WAVE_SELECT_SQR,
     MOD_AMT_MIN_VALUE
   };
-  uint8_t gate;
-  uint8_t note;
-  uint8_t velocity;
-  uint8_t vco_shape;
+  uint8_t gate = 0;
+  uint8_t note = 0;
+  uint8_t velocity = 0;
+  uint8_t vco_shape = VCO_SHAPE_SQR;
   uint16_t square_pwm = PWM_ZERO_VALUE;
   uint16_t other_pwm = PWM_MIN_VALUE;
-  uint16_t frequency_at_zero_volt; // Simple frequency error at 0V
-  int8_t dac_offset;
+  uint16_t frequency_at_zero_volt = 0; // Simple frequency error at 0V
+  int dac_offset = 0;
 } voice;
 
 voice voicess[6];
-
-enum VCO_SHAPE {
-  VCO_SHAPE_SQR,
-  VCO_SHAPE_TRI,
-  VCO_SHAPE_TRI_SAW,
-  VCO_SHAPE_SAW,
-  VCO_SHAPE_LAST
-};
 
 uint16_t vco_shapes[4] = {
   WAVE_SELECT_SQR,
@@ -462,10 +473,11 @@ extern void test_pc( miby_this_t );
 extern void test_chanat( miby_this_t );
 #define MIBY_HND_CHAN_AT  test_chanat
 
-#ifdef DISPLAY_VOICE_DATA
+#ifdef DISPLAY_DAC_DATA
 void printVoiceDacValues(voice *voice) {
   Serial.print("Gate: ");Serial.print(voice->gate);
-  Serial.print(" CV: ");Serial.print(voice->dacValues[CV]);
+  Serial.print(" PCV: ");Serial.print(voice->dacValues[CV]);
+  Serial.print(" OFS: ");Serial.print(voice->dac_offset);
   Serial.print(" MOD: ");Serial.print(voice->dacValues[MOD_AMT]);
   Serial.print(" WAV: ");Serial.print(voice->dacValues[WAVE_SELECT]);
   Serial.print(" PWM: ");Serial.print(voice->dacValues[PWM]);
@@ -474,7 +486,8 @@ void printVoiceDacValues(voice *voice) {
   Serial.print(" RES: ");Serial.print(voice->dacValues[RESONANCE]);
   Serial.print(" VCA: ");Serial.println(voice->dacValues[VCA]);
 }
-
+#endif DISPLAY_DAC_DATA
+#ifdef DISPLAY_VOICE_DATA
 void printEnvelopeParams(voice *voice) {
   Serial.print("VCA_STATE: ");Serial.print(voice->vca_envelope.state);
   Serial.print(" VCA_VALUE: ");Serial.print(voice->vca_envelope.value);
@@ -581,51 +594,6 @@ void updateEnvelope(envelope_structure *envelope, voice *voice) {
 #define NOTE_OFF 0
 #define NOTE_ON  1
 
-int findVoiceWithNote(uint8_t note) {
-  for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].gate == NOTE_ON && voicess[i].note == note)
-      return i;
-  }
-  return -1;
-}
-
-int findIdleVoice() {
-  for(int i = 0; i < NUMBER_OF_VOICES; i++) {
-    if(voicess[i].gate == NOTE_OFF && (voicess[i].vca_envelope.state == ENV_IDLE || voicess[i].vca_envelope.state == ENV_RELEASE))
-      return i;
-  }
-  return -1;
-}
-
-// Pitch is 3/4V per octave or 0.750V per octave
-// An octave has 12 semitones, each semitone is 0.750V / 12 = 0.0625V
-// 0.0625V would be 62.5 steps on the DAC
-// #define NOTE_TO_DAC_VALUE(note) CV_MAX_VALUE - (((125 * note) >> 1) - controlValues[CC_FINE])
-#define NOTE_TO_DAC_VALUE(note) CV_MAX_VALUE - (((125 * note) >> 1))
-
-void voiceNoteOn(int voiceNo, uint8_t note, uint8_t velocity) {
-  voicess[voiceNo].gate = NOTE_ON;
-  voicess[voiceNo].note = note;
-  voicess[voiceNo].dacValues[CV] = constrain(NOTE_TO_DAC_VALUE(note) + voicess[voiceNo].dac_offset,
-                                             CV_MIN_VALUE,
-                                             CV_MAX_VALUE);
-  // Pluss add all pitch changing values (ie: coarse, fine tune)
-#ifdef DISPLAY_MIDI_DATA
-  Serial.println(voicess[voiceNo].dacValues[CV]);
-#endif
-  voicess[voiceNo].velocity = velocity;
-  voicess[voiceNo].vca_envelope.state = ENV_ATTACK;
-  voicess[voiceNo].vcf_envelope.state = ENV_ATTACK;
-}
-
-void voiceNoteOff(int voiceNo, uint8_t note, uint8_t velocity) {
-  voicess[voiceNo].gate = NOTE_OFF;
-  voicess[voiceNo].note = note;
-  voicess[voiceNo].velocity = velocity;
-  voicess[voiceNo].vca_envelope.state = ENV_RELEASE;
-  voicess[voiceNo].vcf_envelope.state = ENV_RELEASE;
-}
-
 static constexpr unsigned k_pinChipSelectDAC = 7;
 
 OutputPort<PORT_B> voiceParamSelect;                    // Arduino pin 8, 9, 10 to 4051 11, 10, 9
@@ -650,20 +618,6 @@ Output<k_pinChipSelectDAC>  m_outputChipSelectDAC;      // Arduino pin 7 to MP49
 // https://forum.arduino.cc/t/uno-timer2-interrupt-formula-to-calculate-frequency/881061/4
 void initializeInterrupts() {
   cli();                                    // stop interrupts
-
-  // TIMER 1 for interrupt frequency 1142.0413990007137 Hz:
-  // TCCR1A = 0; // set entire TCCR1A register to 0
-  // TCCR1B = 0; // same for TCCR1B
-  // TCNT1  = 0; // initialize counter value to 0
-  // // set compare match register for 1142.0413990007137 Hz increments
-  // OCR1A = 14009; // = 16000000 / (1 * 1142.0413990007137) - 1 (must be <65536)
-  // // turn on CTC mode
-  // TCCR1B |= (1 << WGM12);
-  // // Set CS12, CS11 and CS10 bits for 1 prescaler
-  // TCCR1B |= (0 << CS12) | (0 << CS11) | (1 << CS10);
-  // // enable timer compare interrupt
-  // TIMSK1 |= (1 << OCIE1A);
-
   // // 6857 Hz = (1/(7/1000)) * 6 * 8
   // TIMER 1 for interrupt frequency 6858.122588941277 Hz:
   TCCR1A = 0; // set entire TCCR1A register to 0
@@ -683,7 +637,8 @@ void initializeInterrupts() {
   TCCR2B = 0; // same for TCCR2B
   TCNT2  = 0; // initialize counter value to 0
   // set compare match register for 1146.788990825688 Hz increments
-  OCR2A = 176; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
+  // OCR2A = 176; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
+  OCR2A = 499; // = 16000000 / (64 * 1146.788990825688) - 1 (must be <256)
   // turn on CTC mode
   TCCR2A |= (1 << WGM21);
   // Set CS22, CS21 and CS20 bits for 64 prescaler
@@ -736,28 +691,41 @@ ISR(TIMER2_COMPA_vect) {                 // interrupt commands for TIMER 2 here
   // Update Envelope
   for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
     // if(continuous_controller_changed) {}
-    voicess[i].vcf_envelope.attack_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERATTACK]];
-    voicess[i].vcf_envelope.decay_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERDECAY]];
-    voicess[i].vcf_envelope.sustain_value = (controlValues[CC_FILTERSUSTAIN] << 5) + (controlValues[CC_FILTERSUSTAIN] << 4) - controlValues[CC_FILTERSUSTAIN];
-    voicess[i].vcf_envelope.release_rate = exp_vcf_lookup[127 - controlValues[CC_FILTERRELEASE]];
+    // voicess[i].vcf_envelope.attack_rate = exp_vcf_lookup[controlValues[CC_FILTERATTACK]];
+    // voicess[i].vcf_envelope.decay_rate = exp_vcf_lookup[1controlValues[CC_FILTERDECAY]];
+    // voicess[i].vcf_envelope.sustain_value = (controlValues[CC_FILTERSUSTAIN] << 5) + (controlValues[CC_FILTERSUSTAIN] << 4) - controlValues[CC_FILTERSUSTAIN];
+    // voicess[i].vcf_envelope.release_rate = exp_vcf_lookup[controlValues[CC_FILTERRELEASE]];
 
-    voicess[i].vca_envelope.attack_rate = exp_vca_lookup[127 - controlValues[CC_AMPATTACK]];
-    voicess[i].vca_envelope.decay_rate = exp_vca_lookup[127 - controlValues[CC_AMPDECAY]];
-    voicess[i].vca_envelope.sustain_value = (controlValues[CC_AMPSUSTAIN] << 4) + (controlValues[CC_AMPSUSTAIN] << 3) + (controlValues[CC_AMPSUSTAIN] << 1) + controlValues[CC_AMPSUSTAIN];
-    voicess[i].vca_envelope.release_rate = exp_vca_lookup[127 - controlValues[CC_AMPRELEASE]];
+    // voicess[i].vca_envelope.attack_rate = exp_vca_lookup[controlValues[CC_AMPATTACK]];
+    // voicess[i].vca_envelope.decay_rate = exp_vca_lookup[controlValues[CC_AMPDECAY]];
+    // voicess[i].vca_envelope.sustain_value = (controlValues[CC_AMPSUSTAIN] << 4) + (controlValues[CC_AMPSUSTAIN] << 3) + (controlValues[CC_AMPSUSTAIN] << 1) + controlValues[CC_AMPSUSTAIN];
+    // voicess[i].vca_envelope.release_rate = exp_vca_lookup[controlValues[CC_AMPRELEASE]];
 
     updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
     updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
 
-  //   updateLfo(&voicess[i]);
-  //   voicess[i].dacValues[PWM] = voicess[i].lfo.value;
+    updateLfo(&voicess[i]);
+    // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
 
-    voicess[i].dacValues[WAVE_SELECT] = controlValues[CC_WAVESHAPE] << 5;
-    voicess[i].dacValues[PWM] = controlValues[CC_PWM] << 4;
-    voicess[i].dacValues[MIXER] = 500 + (controlValues[CC_NOISE] << 4);
-    voicess[i].dacValues[CUTOFF] = CUTOFF_MAX_VALUE - ((controlValues[CC_CUTOFF] << 5) + (controlValues[CC_CUTOFF] << 4) - controlValues[CC_CUTOFF] + voicess[i].vcf_envelope.value);
-    voicess[i].dacValues[RESONANCE] = (controlValues[CC_RESONANCE] << 4);
-    voicess[i].dacValues[MOD_AMT] = (controlValues[CC_MODAMOUNT] << 4) + (controlValues[CC_MODAMOUNT] << 3) + (controlValues[CC_MODAMOUNT] << 1) + controlValues[CC_MODAMOUNT];
+    // TODO: sort this out
+    // voicess[i].dacValues[WAVE_SELECT] = controlValues[CC_WAVESHAPE] << 5;
+
+    // voicess[i].dacValues[PWM] = controlValues[CC_PWM] << 4;
+
+    // voicess[i].dacValues[MIXER] = 500 + (controlValues[CC_NOISE] << 4);
+
+    // voicess[i].dacValues[CUTOFF] = CUTOFF_MAX_VALUE -
+    //                                ((controlValues[CC_CUTOFF] << 5) +
+    //                                 (controlValues[CC_CUTOFF] << 4) -
+    //                                 controlValues[CC_CUTOFF] +
+    //                                 voicess[i].vcf_envelope.value);
+
+    // voicess[i].dacValues[RESONANCE] = (controlValues[CC_RESONANCE] << 4);
+
+    // voicess[i].dacValues[MOD_AMT] = (controlValues[CC_MODAMOUNT] << 4) +
+    //                                 (controlValues[CC_MODAMOUNT] << 3) +
+    //                                 (controlValues[CC_MODAMOUNT] << 1) +
+    //                                  controlValues[CC_MODAMOUNT];
 
 #ifndef DISABLE_ENVELOPES
     voicess[i].dacValues[CUTOFF] = voicess[i].vcf_envelope.value;
@@ -771,37 +739,7 @@ ISR(TIMER2_COMPA_vect) {                 // interrupt commands for TIMER 2 here
   }
 }
 
-uint16_t zero_crossings;
 uint32_t lastMessageReceived = 0;
-
-ISR(ANALOG_COMP_vect)
-{
-  if(ACSR & (1 << ACO)){
-    zero_crossings++;
-  }
-}
-
-uint16_t getVoiceFrequency() {
-
-  uint16_t retValue = 0;
-  for(int calibration_run = 0;
-      calibration_run < 2;
-      calibration_run++) {
-
-    zero_crossings = 0;
-
-    lastMessageReceived = millis();
-    while((millis() - lastMessageReceived) < 500) {
-      ;
-    }
-
-    if(calibration_run == 1) { // throw away 1st(0)
-      retValue = zero_crossings;
-    }
-  }
-  return retValue;
-}
-
 
 miby_t m;
 
@@ -826,124 +764,21 @@ void setup() {
 
   initializeInterrupts();
 
-  DIDR1 |= (1 << AIN0D) | // Disable Digital Inputs at AIN0 and AIN1
-           (1 << AIN1D);
-
-  ADCSRA &= ~(1 << ADEN); // Disable the ADC
-
-  ADCSRB |= (1 << ACME);  // Set ACME bit in ADCSRB to use external analog input
-                          // at AIN1 -ve input
-
-  ADMUX = (1 << REFS1) |
-          (1 << REFS0) |
-          0x4;            // select A4 as input
-
-  ACSR = (0 << ACD)   |   // Analog Comparator: Enabled
-         (1 << ACBG)  |   // Set ACBG to use bandgap reference for +ve input
-         (0 << ACO)   |   // Analog Comparator Output: OFF
-         (1 << ACI)   |   // Analog Comparator Interrupt Flag:
-                          // Clear Pending Interrupt by  setting the bit
-         (1 << ACIE)  |   // Analog Comparator Interrupt: Enable
-         (0 << ACIC)  |   // Analog Comparator Input Capture: Disabled
-         (0 << ACIS1) |   // Analog Comparator Interrupt Mode:
-         (0 << ACIS0);    // Comparator Interrupt on Output Toggle
+#ifndef DISABLE_AUTOTUNE
+  setupAutotune();
 
   sei();                                    // allow interrupts
 
   preAutotuneLoop = 0;
 
-  for(int voiceNo = 0; voiceNo < 6; voiceNo++) {
-    // set up VCA to half way
-    voicess[voiceNo].dacValues[VCA] = 2975;
-    // for(int calibration_run = 0; calibration_run < 2; calibration_run++) {
-    //   zero_crossings = 0;
-    //   lastMessageReceived = millis();
-    //   while((millis() - lastMessageReceived) < 1000) {
-    //     ;
-    //   }
-    //   if(calibration_run == 1) { // throw away 1st(0)
-    //     Serial.print("voice:");
-    //     Serial.print(voiceNo);
-    //     Serial.print(" frequency:");
-    //     Serial.println(zero_crossings);
-    //     voicess[voiceNo].frequency_at_zero_volt = zero_crossings;
-    //   }
-    // }
-    voicess[voiceNo].frequency_at_zero_volt = getVoiceFrequency();
+  runAutotune();
 
-    int8_t delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt;
-    int8_t best_offset = 0;
-
-#ifdef DISPLAY_AUTOTUNE_INFO
-    Serial.print("voice: ");
-    Serial.print(voiceNo);
-    Serial.print(" frequency: ");
-    Serial.print(voicess[voiceNo].frequency_at_zero_volt);
-    Serial.print(" delta: ");
-    Serial.println(delta);
-#endif // DISPLAY_AUTOTUNE_INFO
-
-    if(voicess[voiceNo].frequency_at_zero_volt != 0 && delta !=0) {
-#define AUTOTUNE_STEP_SIZE 5
-      int offset_start = -1 * AUTOTUNE_STEP_SIZE * 30;
-      int offset_end = AUTOTUNE_STEP_SIZE * 30;
-      int offset_step = AUTOTUNE_STEP_SIZE;
-
-      if(delta < 0) {
-        offset_start = AUTOTUNE_STEP_SIZE * 30;
-        offset_end = -1 * AUTOTUNE_STEP_SIZE * 30;
-        offset_step = -AUTOTUNE_STEP_SIZE;
-      }
-
-      for(int offset = offset_start;
-              offset != offset_end;
-              offset += offset_step) {
-
-        voicess[voiceNo].dac_offset = offset;
-        voicess[voiceNo].dacValues[CV] = CV_ZERO_VALUE + voicess[voiceNo].dac_offset; // Set new CV
-        voicess[voiceNo].frequency_at_zero_volt = getVoiceFrequency();                // Measure frequency
-
-#ifdef DISPLAY_AUTOTUNE_INFO
-        Serial.print("voice: ");
-        Serial.print(voiceNo);
-        Serial.print(" offset: ");
-        Serial.print(offset);
-        Serial.print(" frequency: ");
-        Serial.print(voicess[voiceNo].frequency_at_zero_volt);
-        Serial.print(" diff: ");
-        Serial.print(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt));
-        Serial.print(" better: ");
-        Serial.print(abs(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt)) < abs(delta));
-        Serial.print(" best_offset: ");
-        Serial.println(best_offset);
-#endif // DISPLAY_AUTOTUNE_INFO
-
-        if( abs(int16_t(voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt)) < abs(delta) ) {
-          best_offset = voicess[voiceNo].dac_offset;
-          delta = voicess[0].frequency_at_zero_volt - voicess[voiceNo].frequency_at_zero_volt;
-        }
-        // Shortcut when offset goes up and frequency already below voice 0
-        // and when offset goes down and frequency already above voice 0
-        if(delta == 0)
-          break;
-      }
-      voicess[voiceNo].dac_offset = best_offset;
-    }
-    voicess[voiceNo].dacValues[VCA] = VCA_MIN_VALUE;
-  }
+  teardownAutotune();
+#endif // DISABLE_AUTOTUNE
 
 #endif // DAC_TEST
 
-  // Turn off analog comparator interrupt
-  ACSR = (0 << ACD)   |   // Analog Comparator: Enabled
-         (1 << ACBG)  |   // Set ACBG to use bandgap reference for +ve input
-         (0 << ACO)   |   // Analog Comparator Output: OFF
-         (1 << ACI)   |   // Analog Comparator Interrupt Flag:
-                          // Clear Pending Interrupt by  setting the bit
-         (0 << ACIE)  |   // Analog Comparator Interrupt: Enable
-         (0 << ACIC)  |   // Analog Comparator Input Capture: Disabled
-         (0 << ACIS1) |   // Analog Comparator Interrupt Mode:
-         (0 << ACIS0);    // Comparator Interrupt on Output Toggle
+  sei();                                    // allow interrupts
 
   preMainLoop = 0;
 
@@ -979,572 +814,219 @@ void loop() {
 #ifdef USE_KEYBOARD
     Serial.print(rx_byte);
     processSerialInput(rx_byte);
-#else
+#else // USE_KEYBOARD
     miby_parse( &m, rx_byte);
     if ( MIBY_ERROR_MISSING_DATA(&m) )
     {
       Serial.println( "*** MISSING DATA ***\n" );
       MIBY_CLEAR_MISSING_DATA(&m);
     }
-#endif
+#endif // USE_KEYBOARD
   }
 
-  if(millis() - lastMessageReceived > 1000) {
+  if(millis() - lastMessageReceived > 5000) {
     lastMessageReceived = millis();
-#ifdef DISPLAY_VOICE_DATA
-    Serial.println(irq1Count);
-    Serial.println(irq2Count);
+#ifdef DISPLAY_DAC_DATA
+    // Serial.println(irq1Count);
+    // Serial.println(irq2Count);
     printVoiceDacValues(&voicess[0]);
     // printEnvelopeParams(&voicess[0]);
-    // printVoiceDacValues(&voicess[1]);
-    // printVoiceDacValues(&voicess[2]);
-    // printVoiceDacValues(&voicess[3]);
-    // printVoiceDacValues(&voicess[4]);
-    // printVoiceDacValues(&voicess[5]);
-    Serial.println("------------------------------");
-#endif // DISPLAY_VOICE_DATA
-  }
-#endif // DAC_TEST
-}
-
-void panic() {
-  for(int i=0; i < NUMBER_OF_VOICES; i++) {
-    voicess[i].gate = NOTE_OFF;
-    voicess[i].vca_envelope.state = ENV_IDLE;
-    voicess[i].vca_envelope.value = voicess[i].vca_envelope.min_value;
-    voicess[i].vcf_envelope.state = ENV_IDLE;
-    voicess[i].vcf_envelope.value = voicess[i].vcf_envelope.min_value;
-    voicess[i].lfo.value = 0;
-
-    voicess[i].dacValues[CUTOFF] =      CUTOFF_ZERO_VALUE;      //   0..7000,   // Cutoff
-    voicess[i].dacValues[RESONANCE] =   RESONANCE_MIN_VALUE;    //   0..2500,   // Resonance
-    voicess[i].dacValues[MIXER] =       MIXER_ZERO_VALUE;       //   0..4000,   // Mixer Balance
-    voicess[i].dacValues[VCA] =         VCA_ZERO_VALUE;         //   0..4200    // VCA
-    voicess[i].dacValues[PWM] =         PWM_ZERO_VALUE;         //   0..2300,   // PWM
-    voicess[i].dacValues[CV] =          CV_ZERO_VALUE;          //   0..8192,   // Key CV
-    voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_SQR;        //   0..4500,   // Wave Select
-    voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;      //   0..4000,   // Mod Amount
-  }
-}
-
-void updatePitch(voice* voice) {
-
-  uint16_t pitch = voice->dacValues[CV];
-  uint16_t gain =
-             pitch > CV_GAIN_SWITCH_POINT ? CV_GAIN_HIGH : CV_GAIN_LOW;
-  uint16_t offset =
-             pitch > CV_GAIN_SWITCH_POINT ? (pitch - CV_GAIN_SWITCH_POINT) : pitch;
-
-  // Serial.print("CV: ");Serial.print(pitch);
-
-  updateDAC(gain, constrain(offset,
-                            CV_MIN_VALUE,
-                            CV_MAX_VALUE >> 1));
-}
-
-void updateModAmount(voice* voice) {
-  // Serial.print("|MOD: ");Serial.print(modAmount);
-  uint16_t modAmount = voice->dacValues[MOD_AMT];
-
-  updateDAC(MOD_AMT_GAIN, constrain(modAmount,
-                                    MOD_AMT_MIN_VALUE,
-                                    MOD_AMT_MAX_VALUE));
-}
-
-void updateWaveSelect(voice* voice) {
-  // Serial.print("|WS: ");Serial.print(waveSelect);
-  uint16_t waveSelect = voice->dacValues[WAVE_SELECT];
-  updateDAC(WAVE_SELECT_GAIN, constrain(waveSelect,
-                                        WAVE_SELECT_MIN_VALUE,
-                                        WAVE_SELECT_MAX_VALUE));
-}
-
-void updatePwm(voice* voice) {
-  // Serial.print("|PWM: ");Serial.print(pwm);
-  uint16_t pwm = voice->dacValues[PWM];
-  updateDAC(PWM_GAIN, constrain(pwm,
-                                PWM_MIN_VALUE,
-                                PWM_MAX_VALUE));
-}
-
-void updateMixer(voice* voice) {
-  // Serial.print("|MIX: ");Serial.print(mixer);
-  uint16_t mixer = voice->dacValues[MIXER];
-  updateDAC(MIXER_GAIN, constrain(mixer,
-                                  MIXER_MIN_VALUE,
-                                  MIXER_MAX_VALUE));
-}
-
-void updateResonance(voice *voice) {
-  // Serial.print("|RES: ");Serial.print(resonance);
-  uint16_t resonance = voice->dacValues[RESONANCE];
-  updateDAC(RESONANCE_GAIN, constrain(resonance,
-                                      RESONANCE_MIN_VALUE,
-                                      RESONANCE_MAX_VALUE));
-}
-
-void updateCutoff(voice *voice) {
-  // Serial.print("|VCF: ");Serial.print(cutoff);
-  uint16_t cutoff = voice->dacValues[CUTOFF];
-  if(cutoff > CUTOFF_GAIN_THRESHOLD) {
-    updateDAC(CUTOFF_GAIN_HIGH, constrain((cutoff - CUTOFF_GAIN_THRESHOLD),
-                                          CUTOFF_MIN_VALUE,
-                                          CUTOFF_MAX_VALUE - CUTOFF_GAIN_THRESHOLD));
-  } else {
-    updateDAC(CUTOFF_GAIN_LOW, constrain(cutoff,
-                                         CUTOFF_MIN_VALUE,
-                                         CUTOFF_GAIN_THRESHOLD));
-  }
-}
-
-void updateVca(voice *voice) {
-  // Serial.print("|VCA: ");Serial.print(vca);
-  uint16_t vca = voice->dacValues[VCA];
-  updateDAC(VCA_GAIN, constrain(vca,
-                                VCA_MIN_VALUE,
-                                VCA_MAX_VALUE));
-  // Serial.println();
-}
-
-void updateDAC(uint16_t gain, uint16_t offset) {
-  uint16_t command = k_writeChannelA | (gain & 0x0FFF);
-
-  // Serial.print("|G: ");Serial.print(gain);
-  // Serial.print("|O: ");Serial.print(offset);
-
-  m_outputChipSelectDAC = LOW;     // Disable DAC latch
-
-  SPI.transfer(command >> 8);
-  SPI.transfer(command & 0xFF);
-
-  m_outputChipSelectDAC = HIGH;    // DAC latch Vout
-
-  command = k_writeChannelB | ((offset >> 1) & 0x0FFF);
-
-  m_outputChipSelectDAC = LOW;     // Disable DAC latch
-
-  SPI.transfer(command >> 8);
-  SPI.transfer(command & 0xFF);
-
-  m_outputChipSelectDAC = HIGH;    // DAC latch Vout
-
-  // Delay a bit to allow DAC to settle
-  // DAC has 4.5uS settling time
-  // CPU runs at 16MHz
-  // 0.0000045/(1/16000000) = 72+ cycles to wait
-  // Serial.println("foo");
-  __builtin_avr_delay_cycles(72);
-}
-
-#define TAB     "\t\t"
-#define NEWTAB    "\n" TAB
-
-/*****************************************************************************/
-/** Note On                                                                 **/
-/*****************************************************************************/
-void miby_note_on( miby_this_t midi_state )
-{
-  // printf( "<Ch.%d> ", MIBY_CHAN(midi_state));
-  // printf( "Note On :: note = %02X, vel = %02X\n", MIBY_ARG0(midi_state),
-  //                                                 MIBY_ARG1(midi_state));
-  if(MIBY_ARG1(midi_state) == 0) {
-    miby_note_off(midi_state);
-  }
-  else {
-    uint8_t voiceNumber = 0xFF;
-    voiceNumber = findIdleVoice();
-
-#ifdef DISPLAY_MIDI_DATA
-    Serial.print( "<Ch.");
-    Serial.print(MIBY_CHAN(midi_state));
-    Serial.print( "> Note On :: note = ");
-    Serial.print(MIBY_ARG0(midi_state));
-    Serial.print(", vel = ");
-    Serial.print(MIBY_ARG1(midi_state));
-    Serial.print(", voice = ");
-    Serial.println(voiceNumber);
-#endif
-    if(voiceNumber == 0xFF)
-      return;
-    else {
-      voiceNoteOn(voiceNumber,
-                  MIBY_ARG0(midi_state),
-                  MIBY_ARG1(midi_state));
-#ifdef DISPLAY_VOICE_DATA
-      printVoiceDacValues(&voicess[0]);
-      printVoiceDacValues(&voicess[1]);
-      printVoiceDacValues(&voicess[2]);
-      printVoiceDacValues(&voicess[3]);
-      printVoiceDacValues(&voicess[4]);
-      printVoiceDacValues(&voicess[5]);
-      Serial.println("------------------------------");
-#endif
-    }
-  }
-}
-
-/*****************************************************************************/
-/** Note Off                                                                **/
-/*****************************************************************************/
-void miby_note_off( miby_this_t midi_state )
-{
-  // printf( "<Ch.%d> ", MIBY_CHAN(midi_state) );
-  // printf( "Note Off :: note = %02X, vel = %02X\n", MIBY_ARG0(midi_state),
-  //                                                  MIBY_ARG1(midi_state) );
-  uint8_t voiceNumber = findVoiceWithNote(MIBY_ARG0(midi_state));
-
-#ifdef DISPLAY_MIDI_DATA
-  Serial.print( "<Ch.");
-  Serial.print(MIBY_CHAN(midi_state));
-  Serial.print( "> Note Off :: note = ");
-  Serial.print(MIBY_ARG0(midi_state));
-  Serial.print(", vel = ");
-  Serial.print(MIBY_ARG1(midi_state));
-  Serial.print(", voice = ");
-  Serial.println(voiceNumber);
-#endif
-
-  if(voiceNumber == 0xFF)
-    return;
-  else {
-    voiceNoteOff(voiceNumber,
-                MIBY_ARG0(midi_state),
-                MIBY_ARG1(midi_state));
-#ifdef DISPLAY_VOICE_DATA
-    printVoiceDacValues(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
     printVoiceDacValues(&voicess[2]);
     printVoiceDacValues(&voicess[3]);
     printVoiceDacValues(&voicess[4]);
     printVoiceDacValues(&voicess[5]);
     Serial.println("------------------------------");
-#endif
+#endif // DISPLAY_DAC_DATA
   }
-
+#endif // DAC_TEST
 }
 
-/*****************************************************************************/
-/** Realtime System Reset                                                   **/
-/*****************************************************************************/
-void miby_rt_system_reset( miby_this_t sss )
-{
-  Serial.println("[FF] SysRT: system reset" );
-  panic();
-}
-
-/*****************************************************************************/
-/** Realtime Timing Clock                                                   **/
-/*****************************************************************************/
-// void test_rt_timing_clock( miby_this_t sss )
-// {
-//   Serial.println("[F8] SysRT: timing clock" );
-// }
-
-/*****************************************************************************/
-/** Realtime Start                                                          **/
-/*****************************************************************************/
-// void test_rt_start( miby_this_t sss )
-// {
-//   Serial.println("[FA] SysRT: start" );
-// }
-
-/*****************************************************************************/
-/** Realtime Continue                                                       **/
-/*****************************************************************************/
-// void test_rt_continue( miby_this_t sss )
-// {
-//   Serial.println("[FB] SysRT: continue" );
-// }
-
-/*****************************************************************************/
-/** Realtime Stop                                                           **/
-/*****************************************************************************/
-// void test_rt_stop( miby_this_t sss )
-// {
-//   Serial.println("[FC] SysRT: stop" );
-// }
-
-/*****************************************************************************/
-/** Realtime Active Sense                                                   **/
-/*****************************************************************************/
-// void test_rt_active_sense( miby_this_t sss )
-// {
-//   Serial.println( NEWTAB "[FE] SysRT: active sense" );
-// }
-
-/*****************************************************************************/
-/** MIDI Time Code                                                          **/
-/*****************************************************************************/
-// void test_mtc( miby_this_t sss )
-// {
-//   printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-//   printf( "SysCom: Timecode :: type = %02X, value = %02X\n", MIBY_ARG0(sss) >> 4, MIBY_ARG0(sss) & 0xF );
-// }
-
-/*****************************************************************************/
-/** Song Position                                                           **/
-/*****************************************************************************/
-// void test_songpos( miby_this_t sss )
-// {
-//   printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-//   printf( "SysCom: Song Position :: LSB = %02X, MSB = %02X\n", MIBY_ARG0(sss), MIBY_ARG1(sss) );
-// }
-
-/*****************************************************************************/
-/** Song Select                                                             **/
-/*****************************************************************************/
-// void test_songsel( miby_this_t sss )
-// {
-//   printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-//   printf( "SysCom: Song Select :: song %02X\n", MIBY_ARG0(sss) );
-// }
-
-/*****************************************************************************/
-/** Tune Request                                                            **/
-/*****************************************************************************/
-// void test_tunereq( miby_this_t sss )
-// {
-//   printf( NEWTAB "[%02X] ", MIBY_STATUSBYTE(sss) );
-//   printf( "SysCom: Tune Request\n" );
-// }
-
-/*****************************************************************************/
-/** Polyphonic Aftertouch                                                   **/
-/*****************************************************************************/
-void test_poly_at( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss), MIBY_ARG1(sss) );
-  printf( "<Ch.%d> ", MIBY_CHAN(sss) );
-  printf( "Poly Touch :: note = %02X, pressure = %02X\n", MIBY_ARG0(sss), MIBY_ARG1(sss) );
-}
-
-/*****************************************************************************/
-/** Continuous Controller                                                   **/
-/*****************************************************************************/
-void test_cc( miby_this_t sss )
-{
-#ifdef DISPLAY_MIDI_DATA
-  Serial.print(MIBY_CHAN(sss));
-  Serial.print(MIBY_ARG0(sss));
-  Serial.println(MIBY_ARG1(sss));
-#endif
-  if(MIBY_ARG0(sss) < 34) {
-    controlValues[MIBY_ARG0(sss)] = MIBY_ARG1(sss);
-  }
-}
-
-/*****************************************************************************/
-/** Program Change                                                          **/
-/*****************************************************************************/
-void test_pc( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-  printf( "<Ch.%d> ", MIBY_CHAN(sss) );
-  printf( "Prog Change :: program # = %02X\n", MIBY_ARG0(sss) );
-}
-
-/*****************************************************************************/
-/** Channel Aftertouch                                                      **/
-/*****************************************************************************/
-void test_chanat( miby_this_t sss )
-{
-  printf( NEWTAB "[%02X %02X] ", MIBY_STATUSBYTE(sss), MIBY_ARG0(sss) );
-  printf( "<Ch.%d> ", MIBY_CHAN(sss) );
-  printf( "Chan Touch :: pressure = %02X\n", MIBY_ARG0(sss) );
-}
-
-/*****************************************************************************/
-/** PitchBend                                                               **/
-/*****************************************************************************/
-void test_pb( miby_this_t sss )
-{
-#ifdef DISPLAY_MIDI_DATA
-  Serial.print("PB:");
-  Serial.print(MIBY_CHAN(sss));
-  Serial.print(MIBY_ARG1(sss));
-  Serial.println(MIBY_ARG0(sss));
-#endif
-}
-
-/*****************************************************************************/
-/** System Exclusive                                                        **/
-/*****************************************************************************/
-void test_sysex( miby_this_t sss )
-{
-  int i;
-  static char *sysex_state[] = { "IDLE", "START", "MID", "END", "ABORT" };
-
-  // printf( NEWTAB "[F0] SYSEX chunk: state = %02X (%s), length = %02X bytes\n",
-  //       MIBY_SYSEX_STATE(sss),
-  //       sysex_state[MIBY_SYSEX_STATE(sss)],
-  //       MIBY_SYSEX_LEN(sss) );
-  // printf( TAB "\t[" );
-  for ( i = 0; i < MIBY_SYSEX_LEN(sss); i++ )
-  {
-    if ( i )
-      printf( " " );
-    printf( "%02X", MIBY_SYSEX_BUF(sss,i) );
-    if ( i % 8 == 7 )
-      printf( NEWTAB "\t" );
-  }
-  printf( "]" );
-
-  MIBY_SYSEX_DONE_OK(sss);
-}
 #ifdef USE_KEYBOARD
 
 uint8_t selectedVoiceNumber = 0;
 voice *selectedVoice;
 
 void processSerialInput(char rx_byte) {
+  Serial.println((int)(rx_byte - 49));
   switch(rx_byte){
-    case 49:
-    case 50:
-    case 51:
-    case 52:
-    case 53:
-    case 54: {
+    case 49:  // 1
+    case 50:  // 2
+    case 51:  // 3
+    case 52:  // 4
+    case 53:  // 5
+    case 54: {// 6
       uint8_t note = 49;
       selectedVoiceNumber = rx_byte - 49;
       selectedVoice = &voicess[rx_byte - 49];
-      voicess[selectedVoiceNumber].gate == NOTE_ON ? voiceNoteOff(selectedVoiceNumber, note, 80) : voiceNoteOn(selectedVoiceNumber, note, 80);
+      selectedVoice->gate == NOTE_ON ? voiceNoteOff(selectedVoiceNumber, note, 80) : voiceNoteOn(selectedVoiceNumber, note, 80);
     }
     break;
     // PITCH
     case 113: { // q
-      voicess[selectedVoiceNumber].dacValues[CV] = constrain(voicess[selectedVoiceNumber].dacValues[CV] + 62,
-                                                       CV_MIN_VALUE,
-                                                       CV_MAX_VALUE);
+      selectedVoice->dacValues[CV] = constrain(selectedVoice->dacValues[CV] - AUTOTUNE_STEP_SIZE, //62
+                                               CV_MIN_VALUE,
+                                               CV_MAX_VALUE);
     }
     break;
     case 97: { // a
-      voicess[selectedVoiceNumber].dacValues[CV] = constrain(voicess[selectedVoiceNumber].dacValues[CV] - 62,
-                                                       CV_MIN_VALUE,
-                                                       CV_MAX_VALUE);
+      selectedVoice->dacValues[CV] = constrain(selectedVoice->dacValues[CV] + AUTOTUNE_STEP_SIZE, //62
+                                               CV_MIN_VALUE,
+                                               CV_MAX_VALUE);
     }
     break;
     // MOD
     case 119: { // w
-      voicess[selectedVoiceNumber].dacValues[MOD_AMT] = constrain(voicess[selectedVoiceNumber].dacValues[MOD_AMT] + 25,
-                                                            MOD_AMT_MIN_VALUE,
-                                                            MOD_AMT_MAX_VALUE);
+      selectedVoice->dacValues[MOD_AMT] = constrain(selectedVoice->dacValues[MOD_AMT] + 25,
+                                                    MOD_AMT_MIN_VALUE,
+                                                    MOD_AMT_MAX_VALUE);
     }
     break;
     case 115: { // s
-      voicess[selectedVoiceNumber].dacValues[MOD_AMT] = constrain(voicess[selectedVoiceNumber].dacValues[MOD_AMT] - 25,
-                                                            MOD_AMT_MIN_VALUE,
-                                                            MOD_AMT_MAX_VALUE);
+      selectedVoice->dacValues[MOD_AMT] = constrain(selectedVoice->dacValues[MOD_AMT] - 25,
+                                                    MOD_AMT_MIN_VALUE,
+                                                    MOD_AMT_MAX_VALUE);
     }
     break;
     // WAVE
     // When switching between SQR and other wave shapes, the PWM value needs to be swapped as well
     case 101: { // e
-      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
-        voicess[selectedVoiceNumber].square_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+        selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
       } else {
-        voicess[selectedVoiceNumber].other_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+        selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
       }
 
-      voicess[selectedVoiceNumber].vco_shape = constrain(voicess[selectedVoiceNumber].vco_shape + 1,
-                                                   VCO_SHAPE_SQR,
-                                                   VCO_SHAPE_SAW);
-      voicess[selectedVoiceNumber].dacValues[WAVE_SELECT] = vco_shapes[voicess[selectedVoiceNumber].vco_shape];
+      selectedVoice->vco_shape = constrain(selectedVoice->vco_shape + 1,
+                                           VCO_SHAPE_SQR,
+                                           VCO_SHAPE_SAW);
+      selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
 
-      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
-         voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].square_pwm;
+      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+         selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
       } else {
-        voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].other_pwm;
+        selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
       }
     }
     break;
     case 100: { // d
-      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
-        voicess[selectedVoiceNumber].square_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+        selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
       } else {
-        voicess[selectedVoiceNumber].other_pwm = voicess[selectedVoiceNumber].dacValues[PWM];
+        selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
       }
 
-      voicess[selectedVoiceNumber].vco_shape = constrain(voicess[selectedVoiceNumber].vco_shape - 1,
-                                                   VCO_SHAPE_SQR,
-                                                   VCO_SHAPE_SAW);
-      voicess[selectedVoiceNumber].dacValues[WAVE_SELECT] = vco_shapes[voicess[selectedVoiceNumber].vco_shape];
+      selectedVoice->vco_shape = constrain(selectedVoice->vco_shape - 1,
+                                           VCO_SHAPE_SQR,
+                                           VCO_SHAPE_SAW);
+      selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
 
-      if(voicess[selectedVoiceNumber].vco_shape == VCO_SHAPE_SQR){
-         voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].square_pwm;
+      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+         selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
       } else {
-        voicess[selectedVoiceNumber].dacValues[PWM] = voicess[selectedVoiceNumber].other_pwm;
+        selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
       }
     }
     break;
     // PWM
     case 114: { // r
-      voicess[selectedVoiceNumber].dacValues[PWM] = constrain(voicess[selectedVoiceNumber].dacValues[PWM] + 25,
-                                                        PWM_MIN_VALUE,
-                                                        PWM_MAX_VALUE);
+      selectedVoice->dacValues[PWM] = constrain(selectedVoice->dacValues[PWM] + 25,
+                                                PWM_MIN_VALUE,
+                                                PWM_MAX_VALUE);
     }
     break;
     case 102: { // f
-      voicess[selectedVoiceNumber].dacValues[PWM] = constrain(voicess[selectedVoiceNumber].dacValues[PWM] - 25,
-                                                        PWM_MIN_VALUE,
-                                                        PWM_MAX_VALUE);
+      selectedVoice->dacValues[PWM] = constrain(selectedVoice->dacValues[PWM] - 25,
+                                                PWM_MIN_VALUE,
+                                                PWM_MAX_VALUE);
     }
     break;
     // MIXER
     case 116: { // t
-      voicess[selectedVoiceNumber].dacValues[MIXER] = constrain(voicess[selectedVoiceNumber].dacValues[MIXER] + 25,
-                                                MIXER_MIN_VALUE,
-                                                MIXER_MAX_VALUE);
+      selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] + 25,
+                                                  MIXER_MIN_VALUE,
+                                                  MIXER_MAX_VALUE);
     }
     break;
     case 103: { // g
-      voicess[selectedVoiceNumber].dacValues[MIXER] = constrain(voicess[selectedVoiceNumber].dacValues[MIXER] - 25,
-                                                MIXER_MIN_VALUE,
-                                                MIXER_MAX_VALUE);
+      selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] - 25,
+                                                  MIXER_MIN_VALUE,
+                                                  MIXER_MAX_VALUE);
     }
     break;
     // CUTOFF
     case 121: { // y
-      voicess[selectedVoiceNumber].dacValues[CUTOFF] = constrain(voicess[selectedVoiceNumber].dacValues[CUTOFF] + 25,
-                                                           CUTOFF_MIN_VALUE,
-                                                           CUTOFF_MAX_VALUE);
+      selectedVoice->dacValues[CUTOFF] = constrain(selectedVoice->dacValues[CUTOFF] + 25,
+                                                   CUTOFF_MIN_VALUE,
+                                                   CUTOFF_MAX_VALUE);
     }
     break;
     case 104: { // h
-      voicess[selectedVoiceNumber].dacValues[CUTOFF] = constrain(voicess[selectedVoiceNumber].dacValues[CUTOFF] - 25,
-                                                           CUTOFF_MIN_VALUE,
-                                                           CUTOFF_MAX_VALUE);
+      selectedVoice->dacValues[CUTOFF] = constrain(selectedVoice->dacValues[CUTOFF] - 25,
+                                                   CUTOFF_MIN_VALUE,
+                                                   CUTOFF_MAX_VALUE);
     }
     break;
     // RESONANCE
     case 117: { // u
-      voicess[selectedVoiceNumber].dacValues[RESONANCE] = constrain(voicess[selectedVoiceNumber].dacValues[RESONANCE] + 25,
-                                                              RESONANCE_MIN_VALUE,
-                                                              RESONANCE_MAX_VALUE);
+      selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] + 25,
+                                                      RESONANCE_MIN_VALUE,
+                                                      RESONANCE_MAX_VALUE);
     }
     break;
     case 106: { // j
-      voicess[selectedVoiceNumber].dacValues[RESONANCE] = constrain(voicess[selectedVoiceNumber].dacValues[RESONANCE] - 25,
-                                                              RESONANCE_MIN_VALUE,
-                                                              RESONANCE_MAX_VALUE);
+      selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] - 25,
+                                                      RESONANCE_MIN_VALUE,
+                                                      RESONANCE_MAX_VALUE);
     }
     break;
     // VCA
     case 105: { // i
-      voicess[selectedVoiceNumber].dacValues[VCA] = constrain(voicess[selectedVoiceNumber].dacValues[VCA] + 25,
-                                                        VCA_MIN_VALUE,
-                                                        VCA_MAX_VALUE);
+      selectedVoice->dacValues[VCA] = constrain(selectedVoice->dacValues[VCA] + 25,
+                                                VCA_MIN_VALUE,
+                                                VCA_MAX_VALUE);
     }
     break;
     case 107: { // k
-      voicess[selectedVoiceNumber].dacValues[VCA] = constrain(voicess[selectedVoiceNumber].dacValues[VCA] - 25,
-                                                        VCA_MIN_VALUE,
-                                                        VCA_MAX_VALUE);
+      selectedVoice->dacValues[VCA] = constrain(selectedVoice->dacValues[VCA] - 25,
+                                                VCA_MIN_VALUE,
+                                                VCA_MAX_VALUE);
+    }
+    break;
+    case 111: { //o
+      // Serial.print("selectedVoice->dac_offset:");
+      // Serial.println(selectedVoice->dac_offset);
+      selectedVoice->dac_offset = selectedVoice->dac_offset + AUTOTUNE_STEP_SIZE;
+    }
+    break;
+    case 108: { //l
+      selectedVoice->dac_offset = selectedVoice->dac_offset - AUTOTUNE_STEP_SIZE;
+    }
+    break;
+    case 120: {} // x
+    break;
+    case 98:  {} // c
+    break;
+    case 118: {} // v
+    break;
+    case 99:  {} // b
+    break;
+    case 110: {} // n
+    break;
+    case 109: {} // m
+    break;
+    case 65: { // A
+      preMainLoop = 1; // stop envelopes
+      setupAutotune(); // enable analogue comparator
+      runAutotune();
+      teardownAutotune();
+      preMainLoop = 0; // start envelopes
     }
     break;
     case 122: { // z
         panic(); // zero DAC
       }
-      break;
+    break;
   }
 
   Serial.print("1/2/3");
@@ -1555,6 +1037,7 @@ void processSerialInput(char rx_byte) {
   Serial.print("  MIX: t/g");
   Serial.print("  VCF: y/h");
   Serial.print("  RES: u/j");
-  Serial.println("  VCA: i/k");
+  Serial.print("  VCA: i/k");
+  Serial.println("  OFS: o/l");
 }
 #endif
