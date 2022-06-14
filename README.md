@@ -308,6 +308,8 @@ b loop
 c
 ```
 
+# Envelopes
+
 ## Generating exponential curves for control values:
 
 Midi controller values usually range from 0..127. Some voice shaping features are better controlled with an "exponential" control. So we should map 0..127 to the control voltage DAC range, which is always starts at 0.
@@ -355,7 +357,34 @@ numerator = number_of_steps / Math.log(max_dac_value)
  5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 ```
 
-## PWM and WAVE SELECT
+## Time based envelopes
+
+A/D/R to be set between 0..5 seconds. Each step adjusts the envelope by
+
+  `5.0 / 128.0 = 0.0390625 seconds`
+
+TIMER2 ticks 1146 times a second => one envelope tick is 45 TIMER2 ticks.
+
+  `(5.0 / 128.0) / (1.0 / 1146.78) = 44.796093750000004`
+
+To calculate VCF & VCA envelope delta values per TIMER2 ticks:
+
+```ruby
+max_dac_value = 6985 # 7000/128 = 54.6 ~ 55 => max value 127*55 = 6985
+number_of_steps = 128
+max_envelope_time = 5.0
+envelope_tick_time = (max_envelope_time / number_of_steps.to_f)
+timer2_frequency = 1146.78
+timer2_tick_time = (1.0 / timer2_frequency)
+
+(1..number_of_steps).map { |env_time| (32 * (max_dac_value.to_f / (env_time * envelope_tick_time / timer2_tick_time))).to_i }
+
+max_dac_value = 4064 # 4200/128 = 32.8 ~ 32 => max value 127*32 = 4064
+
+(1..number_of_steps).map { |env_time| (32 * (max_dac_value.to_f / (env_time * envelope_tick_time / timer2_tick_time))).to_i }
+```
+
+# PWM and WAVE SELECT
 
 From experiments it seems that the PWM needs to be set to 0 when the waveform is other than square, otherwise it distorts the waveform (ie. unexpected behaviour). Though it could be used as a voice shaping feature.
 
