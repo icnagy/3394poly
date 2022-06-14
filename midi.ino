@@ -77,7 +77,7 @@ void miby_note_on( miby_this_t midi_state )
       voiceNoteOn(voiceNumber,
                   MIBY_ARG0(midi_state),
                   MIBY_ARG1(midi_state));
-#ifdef DISPLAY_VOICE_DATA
+#ifdef DISPLAY_DAC_DATA
       printVoiceDacValues(&voicess[0]);
       printVoiceDacValues(&voicess[1]);
       printVoiceDacValues(&voicess[2]);
@@ -117,7 +117,7 @@ void miby_note_off( miby_this_t midi_state )
     voiceNoteOff(voiceNumber,
                 MIBY_ARG0(midi_state),
                 MIBY_ARG1(midi_state));
-#ifdef DISPLAY_VOICE_DATA
+#ifdef DISPLAY_DAC_DATA
     printVoiceDacValues(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
     printVoiceDacValues(&voicess[2]);

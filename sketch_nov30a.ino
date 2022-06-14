@@ -4,14 +4,13 @@
 
 // #define DISPLAY_MIDI_DATA
 // #define DISPLAY_VOICE_DATA
-
-#define DISPLAY_DAC_DATA
+// #define DISPLAY_DAC_DATA
 #define DISPLAY_AUTOTUNE_INFO
 #define USE_KEYBOARD
 
 // #define DISABLE_ENVELOPES
 // #define DAC_TEST
-// #define  DISABLE_AUTOTUNE
+#define DISABLE_AUTOTUNE
 
 #define VREF 4096
 #define DAC_STEPS 4095
@@ -489,14 +488,25 @@ void printVoiceDacValues(voice *voice) {
 #endif DISPLAY_DAC_DATA
 #ifdef DISPLAY_VOICE_DATA
 void printEnvelopeParams(voice *voice) {
-  Serial.print("VCA_STATE: ");Serial.print(voice->vca_envelope.state);
-  Serial.print(" VCA_VALUE: ");Serial.print(voice->vca_envelope.value);
-  Serial.print(" VCF_STATE: ");Serial.print(voice->vcf_envelope.state);
-  Serial.print(" VCF_VALUE: ");Serial.println(voice->vcf_envelope.value);
+  Serial.print("VCA A: ");Serial.print(voice->vca_envelope.attack_rate);
+  Serial.print(" D: ");Serial.print(voice->vca_envelope.decay_rate);
+  Serial.print(" S: ");Serial.print(voice->vca_envelope.sustain_value);
+  Serial.print(" R: ");Serial.print(voice->vca_envelope.release_rate);
+  Serial.print(" STATE: ");Serial.print(voice->vca_envelope.state);
+  Serial.print(" VALUE: ");Serial.print(voice->vca_envelope.value);
+  Serial.print(" MIN: ");Serial.print(voice->vca_envelope.min_value);
+  Serial.print(" MAX: ");Serial.println(voice->vca_envelope.max_value);
 
-  Serial.print("LFO_SHAPE: ");Serial.print(voice->lfo.shape);
-  Serial.print(" LFO_ACC: ");Serial.print(voice->lfo.accumulator);
-  Serial.print(" LFO_VALUE: ");Serial.println(voice->lfo.value);
+  // Serial.print(" VCF A: ");Serial.print(voice->vcf_envelope.attack_rate);
+  // Serial.print(" D: ");Serial.print(voice->vcf_envelope.decay_rate);
+  // Serial.print(" S: ");Serial.print(voice->vcf_envelope.sustain_value);
+  // Serial.print(" R: ");Serial.print(voice->vcf_envelope.release_rate);
+  // Serial.print(" STATE: ");Serial.print(voice->vcf_envelope.state);
+  // Serial.print(" VALUE: ");Serial.println(voice->vcf_envelope.value);
+
+  // Serial.print("LFO_SHAPE: ");Serial.print(voice->lfo.shape);
+  // Serial.print(" LFO_ACC: ");Serial.print(voice->lfo.accumulator);
+  // Serial.print(" LFO_VALUE: ");Serial.println(voice->lfo.value);
 }
 #endif // DISPLAY_VOICE_DATA
 
@@ -774,6 +784,8 @@ void setup() {
   runAutotune();
 
   teardownAutotune();
+#else // DISABLE_AUTOTUNE
+  preAutotuneLoop = 0;
 #endif // DISABLE_AUTOTUNE
 
 #endif // DAC_TEST
@@ -824,20 +836,27 @@ void loop() {
 #endif // USE_KEYBOARD
   }
 
-  if(millis() - lastMessageReceived > 5000) {
+  if(millis() - lastMessageReceived > 1000) {
     lastMessageReceived = millis();
 #ifdef DISPLAY_DAC_DATA
     // Serial.println(irq1Count);
     // Serial.println(irq2Count);
     printVoiceDacValues(&voicess[0]);
-    // printEnvelopeParams(&voicess[0]);
     printVoiceDacValues(&voicess[1]);
     printVoiceDacValues(&voicess[2]);
     printVoiceDacValues(&voicess[3]);
-    printVoiceDacValues(&voicess[4]);
-    printVoiceDacValues(&voicess[5]);
-    Serial.println("------------------------------");
+    // printVoiceDacValues(&voicess[4]);
+    // printVoiceDacValues(&voicess[5]);
 #endif // DISPLAY_DAC_DATA
+
+#ifdef DISPLAY_VOICE_DATA
+    printEnvelopeParams(&voicess[0]);
+    // printEnvelopeParams(&voicess[1]);
+    // printEnvelopeParams(&voicess[2]);
+    // printEnvelopeParams(&voicess[3]);
+#endif // DISPLAY_VOICE_DATA
+
+    // Serial.println("------------------------------");
   }
 #endif // DAC_TEST
 }
@@ -1015,14 +1034,88 @@ void processSerialInput(char rx_byte) {
     break;
     case 109: {} // m
     break;
-    case 65: { // A
-      preMainLoop = 1; // stop envelopes
-      setupAutotune(); // enable analogue comparator
-      runAutotune();
-      teardownAutotune();
-      preMainLoop = 0; // start envelopes
+    // case 65: { // A
+    //   preMainLoop = 1; // stop envelopes
+    //   setupAutotune(); // enable analogue comparator
+    //   runAutotune();
+    //   teardownAutotune();
+    //   preMainLoop = 0; // start envelopes
+    // }
+    // break;
+    case 81: { // Q
+      controlValues[CC_AMPATTACK]++;
     }
     break;
+    case 65: { // A
+      controlValues[CC_AMPATTACK]--;
+    }
+    break;
+    case 87: { // W
+      controlValues[CC_AMPDECAY]++;
+    }
+    break;
+    case 83: { // S
+      controlValues[CC_AMPDECAY]--;
+    }
+    break;
+    case 69: { // E
+      controlValues[CC_AMPSUSTAIN]++;
+    }
+    break;
+    case 68: { // D
+      controlValues[CC_AMPSUSTAIN]--;
+    }
+    break;
+    case 82: { // R
+      controlValues[CC_AMPRELEASE]++;
+    }
+    break;
+    case 70: { // F
+      controlValues[CC_AMPRELEASE]--;
+    }
+    break;
+    case 84: { // T
+      controlValues[CC_FILTERATTACK]++;
+    }
+    break;
+    case 71: { // G
+      controlValues[CC_FILTERATTACK]--;
+    }
+    break;
+    case 89: { // Y
+      controlValues[CC_FILTERDECAY]++;
+    }
+    break;
+    case 72: { // H
+      controlValues[CC_FILTERDECAY]--;
+    }
+    break;
+    case 85: { // U
+      controlValues[CC_FILTERSUSTAIN]++;
+    }
+    break;
+    case 74: { // J
+      controlValues[CC_FILTERSUSTAIN]--;
+    }
+    break;
+    case 73: { // I
+      controlValues[CC_FILTERRELEASE]++;
+    }
+    break;
+    case 75: { // K
+      controlValues[CC_FILTERRELEASE]--;
+    }
+    break;
+    case 79: { // O
+      controlValues[CC_PWM]++;
+    }
+    break;
+    case 76: { // L
+      controlValues[CC_PWM]--;
+    }
+    break;
+
+
     case 122: { // z
         panic(); // zero DAC
       }

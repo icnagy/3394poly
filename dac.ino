@@ -15,6 +15,9 @@ void panic() {
     voicess[i].dacValues[CV] =          CV_ZERO_VALUE;          //   0..8192,   // Key CV
     voicess[i].dacValues[WAVE_SELECT] = WAVE_SELECT_SQR;        //   0..4500,   // Wave Select
     voicess[i].dacValues[MOD_AMT] =     MOD_AMT_MIN_VALUE;      //   0..4000,   // Mod Amount
+#ifdef DISABLE_AUTOTUNE
+    voicess[i].dac_offset = autotune_values[i];
+#endif // DISABLE_AUTOTUNE
   }
 }
 
