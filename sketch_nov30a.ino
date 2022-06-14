@@ -76,7 +76,7 @@ enum DAC_PARAM {
 #define MIXER            2          // Order in multiplexer
 #define MIXER_GAIN       2000       // Where to set the OPAMPs gain for this CV
 #define MIXER_MIN_VALUE  0          // The smallest DAC value for this CV VCA2 FULL VCA1 OFF
-#define MIXER_MAX_VALUE  4000       // The largest DAC value for this CV  VCA2 OFF  VCA1 FULL
+#define MIXER_MAX_VALUE  3000       // The largest DAC value for this CV  VCA2 OFF  VCA1 FULL
 #define MIXER_VCO_MAX_VALUE  3000   // The DAC value where the VCO input is dominant
 #define MIXER_NOSIE_MAX_VALUE  1000 // The DAC value where the noise input is dominant
 #define MIXER_ZERO_VALUE 2000       // Where to reset this CV value       VCA2 -6dB VCA1 -6dB
@@ -662,12 +662,31 @@ ISR(TIMER2_COMPA_vect) {                 // interrupt commands for TIMER 2 here
     // updateLfo(&voicess[i]);
     // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
 
+    if(voicess[i].vco_shape != (controlValues[CC_WAVESHAPE] >> 5)) {
+      // save pwm
+      if(voicess[i].vco_shape == VCO_SHAPE_SQR) {
+        voicess[i].square_pwm = voicess[i].dacValues[PWM];
+      } else {
+        voicess[i].other_pwm = voicess[i].dacValues[PWM];
+      }
+      // set new wave
+      voicess[i].vco_shape = constrain(controlValues[CC_WAVESHAPE] >> 5, VCO_SHAPE_SQR, VCO_SHAPE_SAW);
+      voicess[i].dacValues[WAVE_SELECT] = vco_shapes[voicess[i].vco_shape];
+      // restore pwm
+      if(voicess[i].vco_shape == VCO_SHAPE_SQR){
+         voicess[i].dacValues[PWM] = voicess[i].square_pwm;
+      } else {
+        voicess[i].dacValues[PWM] = voicess[i].other_pwm;
+      }
+    }
+
+    voicess[i].dacValues[RESONANCE] = controlValues[CC_RESONANCE] * 19;
+
+    voicess[i].dacValues[MIXER] = MIXER_MAX_VALUE - (controlValues[CC_NOISE] * 23);
+
     // TODO: sort this out
-    // voicess[i].dacValues[WAVE_SELECT] ?? controlValues[CC_WAVESHAPE];
     // voicess[i].dacValues[PWM] ?? controlValues[CC_PWM];
-    // voicess[i].dacValues[MIXER] ?? controlValues[CC_NOISE];
     // voicess[i].dacValues[CUTOFF] ?? controlValues[CC_CUTOFF];
-    // voicess[i].dacValues[RESONANCE] ?? controlValues[CC_RESONANCE];
     // voicess[i].dacValues[MOD_AMT] ?? controlValues[CC_MODAMOUNT];
 
 #ifndef DISABLE_ENVELOPES
@@ -731,13 +750,16 @@ void setup() {
 
   controlValues[CC_AMPATTACK] = 2;
   controlValues[CC_AMPDECAY] = 15;
-  controlValues[CC_AMPSUSTAIN] = 45;
+  controlValues[CC_AMPSUSTAIN] = 100;
   controlValues[CC_AMPRELEASE] = 4;
 
   controlValues[CC_FILTERATTACK] = 4;
   controlValues[CC_FILTERDECAY] = 15;
-  controlValues[CC_FILTERSUSTAIN] = 15;
+  controlValues[CC_FILTERSUSTAIN] = 100;
   controlValues[CC_FILTERRELEASE] = 2;
+
+  controlValues[CC_NOISE] = 0;
+
 }
 
 void loop() {
@@ -853,41 +875,45 @@ void processSerialInput(char rx_byte) {
     // WAVE
     // When switching between SQR and other wave shapes, the PWM value needs to be swapped as well
     case 101: { // e
-      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
-        selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
-      } else {
-        selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
-      }
+      controlValues[CC_WAVESHAPE] = constrain(controlValues[CC_WAVESHAPE] + 32, 0, 127);
 
-      selectedVoice->vco_shape = constrain(selectedVoice->vco_shape + 1,
-                                           VCO_SHAPE_SQR,
-                                           VCO_SHAPE_SAW);
-      selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
+      // if(selectedVoice->vco_shape == VCO_SHAPE_SQR) {
+      //   selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
+      // } else {
+      //   selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
+      // }
 
-      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
-         selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
-      } else {
-        selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
-      }
+      // selectedVoice->vco_shape = constrain(selectedVoice->vco_shape + 1,
+      //                                      VCO_SHAPE_SQR,
+      //                                      VCO_SHAPE_SAW);
+      // selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
+
+      // if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+      //    selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
+      // } else {
+      //   selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
+      // }
     }
     break;
     case 100: { // d
-      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
-        selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
-      } else {
-        selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
-      }
+      controlValues[CC_WAVESHAPE] = constrain(controlValues[CC_WAVESHAPE] - 32, 0, 127);
 
-      selectedVoice->vco_shape = constrain(selectedVoice->vco_shape - 1,
-                                           VCO_SHAPE_SQR,
-                                           VCO_SHAPE_SAW);
-      selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
+      // if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+      //   selectedVoice->square_pwm = selectedVoice->dacValues[PWM];
+      // } else {
+      //   selectedVoice->other_pwm = selectedVoice->dacValues[PWM];
+      // }
 
-      if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
-         selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
-      } else {
-        selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
-      }
+      // selectedVoice->vco_shape = constrain(selectedVoice->vco_shape - 1,
+      //                                      VCO_SHAPE_SQR,
+      //                                      VCO_SHAPE_SAW);
+      // selectedVoice->dacValues[WAVE_SELECT] = vco_shapes[selectedVoice->vco_shape];
+
+      // if(selectedVoice->vco_shape == VCO_SHAPE_SQR){
+      //    selectedVoice->dacValues[PWM] = selectedVoice->square_pwm;
+      // } else {
+      //   selectedVoice->dacValues[PWM] = selectedVoice->other_pwm;
+      // }
     }
     break;
     // PWM
@@ -905,15 +931,17 @@ void processSerialInput(char rx_byte) {
     break;
     // MIXER
     case 116: { // t
-      selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] + 25,
-                                                  MIXER_MIN_VALUE,
-                                                  MIXER_MAX_VALUE);
+      controlValues[CC_NOISE] = constrain(controlValues[CC_NOISE] + 32, 0, 127);
+      // selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] + 25,
+      //                                             MIXER_MIN_VALUE,
+      //                                             MIXER_MAX_VALUE);
     }
     break;
     case 103: { // g
-      selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] - 25,
-                                                  MIXER_MIN_VALUE,
-                                                  MIXER_MAX_VALUE);
+      controlValues[CC_NOISE] = constrain(controlValues[CC_NOISE] - 32, 0, 127);
+      // selectedVoice->dacValues[MIXER] = constrain(selectedVoice->dacValues[MIXER] - 25,
+      //                                             MIXER_MIN_VALUE,
+      //                                             MIXER_MAX_VALUE);
     }
     break;
     // CUTOFF
@@ -931,15 +959,17 @@ void processSerialInput(char rx_byte) {
     break;
     // RESONANCE
     case 117: { // u
-      selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] + 25,
-                                                      RESONANCE_MIN_VALUE,
-                                                      RESONANCE_MAX_VALUE);
+      controlValues[CC_RESONANCE] = constrain(++controlValues[CC_RESONANCE], 0, 127);
+      // selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] + 25,
+      //                                                 RESONANCE_MIN_VALUE,
+      //                                                 RESONANCE_MAX_VALUE);
     }
     break;
     case 106: { // j
-      selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] - 25,
-                                                      RESONANCE_MIN_VALUE,
-                                                      RESONANCE_MAX_VALUE);
+      controlValues[CC_RESONANCE] = constrain(--controlValues[CC_RESONANCE], 0, 127);
+      // selectedVoice->dacValues[RESONANCE] = constrain(selectedVoice->dacValues[RESONANCE] - 25,
+      //                                                 RESONANCE_MIN_VALUE,
+      //                                                 RESONANCE_MAX_VALUE);
     }
     break;
     // VCA
@@ -986,82 +1016,80 @@ void processSerialInput(char rx_byte) {
     // }
     // break;
     case 81: { // Q
-      controlValues[CC_AMPATTACK]++;
+      controlValues[CC_AMPATTACK] = constrain(++controlValues[CC_AMPATTACK], 0, 127);
     }
     break;
     case 65: { // A
-      controlValues[CC_AMPATTACK]--;
+      controlValues[CC_AMPATTACK] = constrain(--controlValues[CC_AMPATTACK], 0, 127);
     }
     break;
     case 87: { // W
-      controlValues[CC_AMPDECAY]++;
+      controlValues[CC_AMPDECAY] = constrain(++controlValues[CC_AMPDECAY], 0, 127);
     }
     break;
     case 83: { // S
-      controlValues[CC_AMPDECAY]--;
+      controlValues[CC_AMPDECAY] = constrain(--controlValues[CC_AMPDECAY], 0, 127);
     }
     break;
     case 69: { // E
-      controlValues[CC_AMPSUSTAIN]++;
+      controlValues[CC_AMPSUSTAIN] = constrain(++controlValues[CC_AMPSUSTAIN], 0, 127);
     }
     break;
     case 68: { // D
-      controlValues[CC_AMPSUSTAIN]--;
+      controlValues[CC_AMPSUSTAIN] = constrain(--controlValues[CC_AMPSUSTAIN], 0, 127);
     }
     break;
     case 82: { // R
-      controlValues[CC_AMPRELEASE]++;
+      controlValues[CC_AMPRELEASE] = constrain(++controlValues[CC_AMPRELEASE], 0, 127);
     }
     break;
     case 70: { // F
-      controlValues[CC_AMPRELEASE]--;
+      controlValues[CC_AMPRELEASE] = constrain(--controlValues[CC_AMPRELEASE], 0, 127);
     }
     break;
     case 84: { // T
-      controlValues[CC_FILTERATTACK]++;
+      controlValues[CC_FILTERATTACK] = constrain(++controlValues[CC_FILTERATTACK], 0, 127);
     }
     break;
     case 71: { // G
-      controlValues[CC_FILTERATTACK]--;
+      controlValues[CC_FILTERATTACK] = constrain(--controlValues[CC_FILTERATTACK], 0, 127);
     }
     break;
     case 89: { // Y
-      controlValues[CC_FILTERDECAY]++;
+      controlValues[CC_FILTERDECAY] = constrain(++controlValues[CC_FILTERDECAY], 0 , 127);
     }
     break;
     case 72: { // H
-      controlValues[CC_FILTERDECAY]--;
+      controlValues[CC_FILTERDECAY] = constrain(--controlValues[CC_FILTERDECAY], 0 , 127);
     }
     break;
     case 85: { // U
-      controlValues[CC_FILTERSUSTAIN]++;
+      controlValues[CC_FILTERSUSTAIN] = constrain(++controlValues[CC_FILTERSUSTAIN], 0 ,127);
     }
     break;
     case 74: { // J
-      controlValues[CC_FILTERSUSTAIN]--;
+      controlValues[CC_FILTERSUSTAIN] = constrain(--controlValues[CC_FILTERSUSTAIN], 0 ,127);
     }
     break;
     case 73: { // I
-      controlValues[CC_FILTERRELEASE]++;
+      controlValues[CC_FILTERRELEASE] = constrain(++controlValues[CC_FILTERRELEASE], 0, 127);
     }
     break;
     case 75: { // K
-      controlValues[CC_FILTERRELEASE]--;
+      controlValues[CC_FILTERRELEASE] = constrain(--controlValues[CC_FILTERRELEASE], 0, 127);
     }
     break;
     case 79: { // O
-      controlValues[CC_PWM]++;
+      controlValues[CC_PWM] = constrain(++controlValues[CC_PWM], 0, 127);
     }
     break;
     case 76: { // L
-      controlValues[CC_PWM]--;
+      controlValues[CC_PWM] = constrain(--controlValues[CC_PWM], 0, 127);
     }
     break;
-
-
     case 122: { // z
-        panic(); // zero DAC
-      }
+      panic(); // zero DAC
+    }
     break;
   }
 
