@@ -152,7 +152,7 @@ typedef struct lfo_structure {
   uint16_t min_value;
   uint16_t max_value;
   uint16_t accumulator;
-  uint16_t value;
+  int16_t value;
 } lfo;
 
 #define ENV_IDLE    0
@@ -165,6 +165,7 @@ typedef struct envelope_structure {
   uint8_t state;
   uint16_t min_value;
   uint16_t max_value;
+  uint32_t accumulator;
   uint16_t value;
   uint16_t attack_rate;
   uint16_t decay_rate;
@@ -186,20 +187,22 @@ typedef struct voice_structure {
     VCA_MIN_VALUE,     // min_value
     VCA_MAX_VALUE,     // max_value
     VCA_MIN_VALUE,     // value 0 - 3500
-    10,                // attack_rate
-    30,                // decay_rate
-    VCA_MAX_VALUE,     // sustain_value
-    10                 // release_rate
+    VCA_MIN_VALUE,     // accumulator
+    0,                 // attack_rate
+    0,                 // decay_rate
+    0,                 // sustain_value
+    0                  // release_rate
   };
   envelope_structure vcf_envelope = {
     ENV_IDLE,
     CUTOFF_MIN_VALUE,  // min_value
     CUTOFF_MAX_VALUE,  // max_value
     CUTOFF_MIN_VALUE,  // value 0 - 6000
-    60,                // attack_rate
-    10,                // decay_rate
-    CUTOFF_ZERO_VALUE, // sustain_value
-    60                 // release_rate
+    CUTOFF_MIN_VALUE,  // accumulator
+    0,                 // attack_rate
+    0,                 // decay_rate
+    0,                 // sustain_value
+    0                  // release_rate
   };
   lfo_structure lfo = {
     LFO_TRI,           // shape
@@ -260,24 +263,24 @@ void (*updateVoiceParam[8])(voice *) = {
 };
 
 uint16_t exp_vcf_lookup[128] = {
-  6532, 6095, 5688, 5308, 4953, 4622, 4313, 4025, 3756, 3505, 3270, 3052, 2848,
-  2657, 2480, 2314, 2159, 2015, 1880, 1755, 1637, 1528, 1426, 1330, 1241, 1158,
-  1081, 1009, 941, 878, 820, 765, 714, 666, 621, 580, 541, 505, 471, 440, 410,
-  383, 357, 333, 311, 290, 271, 253, 236, 220, 205, 191, 179, 167, 155, 145, 135,
-  126, 118, 110, 102, 96, 89, 83, 78, 72, 67, 63, 59, 55, 51, 48, 44, 41, 39, 36,
-  34, 31, 29, 27, 25, 24, 22, 20, 19, 18, 17, 15, 14, 13, 12, 12, 11, 10, 9, 9, 8,
-  7, 7, 6, 6, 6, 5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1
+  4989, 2494, 1663, 1247, 997, 831, 712, 623, 554, 498, 453, 415, 383, 356, 332,
+  311, 293, 277, 262, 249, 237, 226, 216, 207, 199, 191, 184, 178, 172, 166, 160,
+  155, 151, 146, 142, 138, 134, 131, 127, 124, 121, 118, 116, 113, 110, 108, 106,
+  103, 101, 99, 97, 95, 94, 92, 90, 89, 87, 86, 84, 83, 81, 80, 79, 77, 76, 75,
+  74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64, 63, 63, 62, 61, 60, 60, 59, 58, 58,
+  57, 56, 56, 55, 54, 54, 53, 53, 52, 51, 51, 50, 50, 49, 49, 48, 48, 47, 47, 47,
+  46, 46, 45, 45, 44, 44, 44, 43, 43, 43, 42, 42, 41, 41, 41, 40, 40, 40, 39, 39,
+  39, 38
 };
 
 uint16_t exp_vca_lookup[128] = {
-  4027, 3773, 3534, 3310, 3101, 2905, 2721, 2549, 2387, 2236, 2095, 1962, 1838,
-  1722, 1613, 1511, 1415, 1325, 1242, 1163, 1089, 1020, 956, 895, 839, 785, 736,
-  689, 646, 605, 566, 531, 497, 465, 436, 408, 382, 358, 336, 314, 294, 276, 258,
-  242, 227, 212, 199, 186, 174, 163, 153, 143, 134, 126, 118, 110, 103, 97, 90,
-  85, 79, 74, 70, 65, 61, 57, 53, 50, 47, 44, 41, 38, 36, 34, 31, 29, 28, 26, 24,
-  23, 21, 20, 18, 17, 16, 15, 14, 13, 12, 11, 11, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5,
-  5, 5, 4, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+  2903, 1451, 967, 725, 580, 483, 414, 362, 322, 290, 263, 241, 223, 207, 193,
+  181, 170, 161, 152, 145, 138, 131, 126, 120, 116, 111, 107, 103, 100, 96, 93,
+  90, 87, 85, 82, 80, 78, 76, 74, 72, 70, 69, 67, 65, 64, 63, 61, 60, 59, 58, 56,
+  55, 54, 53, 52, 51, 50, 50, 49, 48, 47, 46, 46, 45, 44, 43, 43, 42, 42, 41, 40,
+  40, 39, 39, 38, 38, 37, 37, 36, 36, 35, 35, 34, 34, 34, 33, 33, 32, 32, 32, 31,
+  31, 31, 30, 30, 30, 29, 29, 29, 29, 28, 28, 28, 27, 27, 27, 27, 26, 26, 26, 26,
+  25, 25, 25, 25, 25, 24, 24, 24, 24, 23, 23, 23, 23, 23, 23, 22, 22
 };
 
 // Values to map from CC
@@ -544,63 +547,6 @@ void updateLfo(voice *voice) {
   }
 }
 
-// issue when *_rate is 0!
-void updateEnvelope(envelope_structure *envelope, voice *voice) {
-  // Check gate
-  switch(envelope->state) {
-    case ENV_IDLE:
-      if(voice->gate){ // note on
-        envelope->state = ENV_ATTACK;
-        envelope->value = envelope->min_value;
-      }
-      break;
-    case ENV_ATTACK:
-      if(voice->gate) {
-        envelope->value += envelope->attack_rate;
-        if(envelope->value >= envelope->max_value){
-          envelope->value = envelope->max_value;
-          envelope->state = ENV_DECAY;
-        }
-      } else {
-        envelope->state = ENV_RELEASE;
-      }
-      break;
-    case ENV_DECAY:
-      envelope->value -= envelope->decay_rate;
-      if(voice->gate) {
-        if(envelope->value <= envelope->sustain_value){
-          // reached sustain level and gate is still on
-          envelope->state = ENV_SUSTAIN;
-          envelope->value = envelope->sustain_value;
-        }
-      } else {
-        // go to release or decay away?
-        if(envelope->value <= envelope->min_value){
-          envelope->value = envelope->min_value;
-          envelope->state = ENV_IDLE;
-        }
-      }
-      break;
-    case ENV_SUSTAIN:
-      if(voice->gate) {
-        envelope->value = envelope->sustain_value;
-      } else {
-        envelope->state = ENV_RELEASE;
-      }
-      break;
-    case ENV_RELEASE:
-      if(envelope->min_value + envelope->release_rate >= envelope->value){
-        envelope->value = envelope->min_value;
-        envelope->state = ENV_IDLE;
-      }
-      else
-        envelope->value -= envelope->release_rate;
-      break;
-    default:
-      envelope->value = envelope->min_value;
-  }
-}
-
 #define NOTE_OFF 0
 #define NOTE_ON  1
 
@@ -698,47 +644,34 @@ ISR(TIMER1_COMPA_vect) {                // interrupt commands for TIMER 1
 ISR(TIMER2_COMPA_vect) {                 // interrupt commands for TIMER 2 here
   if(preMainLoop)
     return;
-  // Update Envelope
   for(int i = 0; i < NUMBER_OF_VOICES; i ++) {
-    // if(continuous_controller_changed) {}
-    // voicess[i].vcf_envelope.attack_rate = exp_vcf_lookup[controlValues[CC_FILTERATTACK]];
-    // voicess[i].vcf_envelope.decay_rate = exp_vcf_lookup[1controlValues[CC_FILTERDECAY]];
-    // voicess[i].vcf_envelope.sustain_value = (controlValues[CC_FILTERSUSTAIN] << 5) + (controlValues[CC_FILTERSUSTAIN] << 4) - controlValues[CC_FILTERSUSTAIN];
-    // voicess[i].vcf_envelope.release_rate = exp_vcf_lookup[controlValues[CC_FILTERRELEASE]];
 
-    // voicess[i].vca_envelope.attack_rate = exp_vca_lookup[controlValues[CC_AMPATTACK]];
-    // voicess[i].vca_envelope.decay_rate = exp_vca_lookup[controlValues[CC_AMPDECAY]];
-    // voicess[i].vca_envelope.sustain_value = (controlValues[CC_AMPSUSTAIN] << 4) + (controlValues[CC_AMPSUSTAIN] << 3) + (controlValues[CC_AMPSUSTAIN] << 1) + controlValues[CC_AMPSUSTAIN];
-    // voicess[i].vca_envelope.release_rate = exp_vca_lookup[controlValues[CC_AMPRELEASE]];
+    voicess[i].vca_envelope.attack_rate = exp_vca_lookup[controlValues[CC_AMPATTACK]];
+    voicess[i].vca_envelope.decay_rate = exp_vca_lookup[controlValues[CC_AMPDECAY]];
+    voicess[i].vca_envelope.sustain_value = controlValues[CC_AMPSUSTAIN] * 32;
+    voicess[i].vca_envelope.release_rate = exp_vca_lookup[controlValues[CC_AMPRELEASE]];
+
+    voicess[i].vcf_envelope.attack_rate = exp_vcf_lookup[controlValues[CC_FILTERATTACK]];
+    voicess[i].vcf_envelope.decay_rate = exp_vcf_lookup[controlValues[CC_FILTERDECAY]];
+    voicess[i].vcf_envelope.sustain_value = controlValues[CC_FILTERSUSTAIN] * 55;
+    voicess[i].vcf_envelope.release_rate = exp_vcf_lookup[controlValues[CC_FILTERRELEASE]];
 
     updateEnvelope(&voicess[i].vca_envelope, &voicess[i]);
     updateEnvelope(&voicess[i].vcf_envelope, &voicess[i]);
 
-    updateLfo(&voicess[i]);
+    // updateLfo(&voicess[i]);
     // voicess[i].dacValues[PWM] = voicess[i].lfo.value;
 
     // TODO: sort this out
-    // voicess[i].dacValues[WAVE_SELECT] = controlValues[CC_WAVESHAPE] << 5;
-
-    // voicess[i].dacValues[PWM] = controlValues[CC_PWM] << 4;
-
-    // voicess[i].dacValues[MIXER] = 500 + (controlValues[CC_NOISE] << 4);
-
-    // voicess[i].dacValues[CUTOFF] = CUTOFF_MAX_VALUE -
-    //                                ((controlValues[CC_CUTOFF] << 5) +
-    //                                 (controlValues[CC_CUTOFF] << 4) -
-    //                                 controlValues[CC_CUTOFF] +
-    //                                 voicess[i].vcf_envelope.value);
-
-    // voicess[i].dacValues[RESONANCE] = (controlValues[CC_RESONANCE] << 4);
-
-    // voicess[i].dacValues[MOD_AMT] = (controlValues[CC_MODAMOUNT] << 4) +
-    //                                 (controlValues[CC_MODAMOUNT] << 3) +
-    //                                 (controlValues[CC_MODAMOUNT] << 1) +
-    //                                  controlValues[CC_MODAMOUNT];
+    // voicess[i].dacValues[WAVE_SELECT] ?? controlValues[CC_WAVESHAPE];
+    // voicess[i].dacValues[PWM] ?? controlValues[CC_PWM];
+    // voicess[i].dacValues[MIXER] ?? controlValues[CC_NOISE];
+    // voicess[i].dacValues[CUTOFF] ?? controlValues[CC_CUTOFF];
+    // voicess[i].dacValues[RESONANCE] ?? controlValues[CC_RESONANCE];
+    // voicess[i].dacValues[MOD_AMT] ?? controlValues[CC_MODAMOUNT];
 
 #ifndef DISABLE_ENVELOPES
-    voicess[i].dacValues[CUTOFF] = voicess[i].vcf_envelope.value;
+    voicess[i].dacValues[CUTOFF] = CUTOFF_MAX_VALUE - voicess[i].vcf_envelope.value;
     voicess[i].dacValues[VCA]    = voicess[i].vca_envelope.value;
 #endif // DISABLE_ENVELOPES
   }
@@ -795,6 +728,16 @@ void setup() {
   preMainLoop = 0;
 
   lastMessageReceived = millis();
+
+  controlValues[CC_AMPATTACK] = 2;
+  controlValues[CC_AMPDECAY] = 15;
+  controlValues[CC_AMPSUSTAIN] = 45;
+  controlValues[CC_AMPRELEASE] = 4;
+
+  controlValues[CC_FILTERATTACK] = 4;
+  controlValues[CC_FILTERDECAY] = 15;
+  controlValues[CC_FILTERSUSTAIN] = 15;
+  controlValues[CC_FILTERRELEASE] = 2;
 }
 
 void loop() {
